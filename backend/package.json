@@ -1,0 +1,24 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Onur Acar <onuracar.work@gmail.com> (https://github.com/onuracar-dev)",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axe-puppeteer": "^1.1.1",
+    "chrome-launcher": "^1.2.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "lighthouse": "^12.6.1",
+    "puppeteer": "^24.37.5",
+    "sharp": "^0.34.5",
+    "webpagetest": "^0.7.6"
+  }
+}
