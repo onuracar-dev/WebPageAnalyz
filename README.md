@@ -2,7 +2,17 @@
 
 Full-stack website audit dashboard with AI-assisted remediation notes.
 
+<img src="./docs/assets/preview.svg" alt="WebPage Analyzer dashboard preview">
+
 WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, and Gemini into one workflow: enter a URL, run technical audits, inspect the results, and generate practical fix suggestions.
+
+## Product Flow
+
+1. Enter a target website URL.
+2. Backend runs audit engines and gathers metrics.
+3. Frontend visualizes performance, SEO, accessibility, and technical findings.
+4. Gemini generates targeted repair suggestions for selected issues.
+5. The current report is stored locally so users can return to it.
 
 ## Highlights
 
@@ -15,9 +25,13 @@ WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, and Gemini into one w
 
 ## Architecture
 
-- `frontend/` - React, Vite, Framer Motion, Recharts
-- `backend/` - Express API, Lighthouse, Puppeteer, Axe, Gemini integration
-- `backend/analyzers/` - individual analyzer modules
+| Area | Implementation |
+| --- | --- |
+| Frontend | React, Vite, Framer Motion, Recharts |
+| Backend | Express API |
+| Browser automation | Puppeteer, Chrome Launcher |
+| Audit engines | Lighthouse, Axe, YellowLabTools |
+| AI remediation | Gemini API |
 
 ## Environment
 
@@ -64,7 +78,7 @@ npm run build
 
 ```bash
 cd backend
-node --check server.js
+npm run check
 ```
 
 ## Recent Hardening
@@ -73,6 +87,13 @@ node --check server.js
 - Added timeout protection to YellowLab polling
 - Removed unused backend dependencies
 - Fixed frontend dependency resolution so normal `npm install` works
+
+## Roadmap
+
+- Add saved report export
+- Add per-audit loading states
+- Split frontend chart/report components
+- Add integration tests around analyzer endpoints
 
 ## Author
 
