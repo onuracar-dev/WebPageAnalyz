@@ -22,7 +22,8 @@ async function runYellowLab(url) {
 
         // 2. Poll for completion
         let resultData = null;
-        while (true) {
+        const maxAttempts = Number(process.env.YELLOWLAB_MAX_POLL_ATTEMPTS || 24);
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             await new Promise(r => setTimeout(r, 5000)); // sleep 5 seconds
 
             const getRes = await fetch(`https://yellowlab.tools/api/runs/${runId}`);
@@ -45,6 +46,10 @@ async function runYellowLab(url) {
             } else if (currentStatus === 5 || currentStatus === 'failed' || currentStatus === 'error') {
                 throw new Error(`YellowLab Analysis Failed: ${getData.error || 'Unknown error'}`);
             }
+        }
+
+        if (!resultData) {
+            throw new Error(`YellowLab Analysis timed out after ${maxAttempts} polling attempts`);
         }
 
         // 3. Save logs and return

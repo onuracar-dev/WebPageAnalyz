@@ -4,6 +4,8 @@ import { Search, Loader2, Activity, Zap, Accessibility, Trash2, Cpu, FileWarning
 import ReactMarkdown from 'react-markdown';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+
 function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,7 +69,7 @@ function App() {
     setReport(null);
 
     try {
-      const response = await fetch('http://localhost:5000/api/analyze', {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: targetUrl }),
@@ -95,7 +97,7 @@ function App() {
     if (!window.confirm('Tüm eski log dosyalarını temizlemek istediğinize emin misiniz?')) return;
 
     try {
-      const response = await fetch('http://localhost:5000/api/logs', {
+      const response = await fetch(`${API_BASE_URL}/api/logs`, {
         method: 'DELETE',
       });
       const data = await response.json();
@@ -113,7 +115,7 @@ function App() {
     setSolvingIssues(prev => ({ ...prev, [issue.id]: true }));
 
     try {
-      const response = await fetch('http://localhost:5000/api/solve', {
+      const response = await fetch(`${API_BASE_URL}/api/solve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ issue })
@@ -135,7 +137,7 @@ function App() {
 
     setGeneratingSummary(true);
     try {
-      const response = await fetch('http://localhost:5000/api/executive-summary', {
+      const response = await fetch(`${API_BASE_URL}/api/executive-summary`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scores: report.scores })
