@@ -1,77 +1,79 @@
-# WebPage Analyzer (v2.0)
+# WebPage Analyzer
 
-## Project Snapshot
+Full-stack website audit dashboard with AI-assisted remediation notes.
 
-WebPage Analyzer is a full-stack audit dashboard that combines Lighthouse, YellowLabTools, Axe, and Gemini-powered remediation suggestions. It is useful as a portfolio project because it turns raw technical reports into an interactive workflow for performance, SEO, accessibility, and code-fix guidance.
+WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, and Gemini into one workflow: enter a URL, run technical audits, inspect the results, and generate practical fix suggestions.
 
-- **Core idea:** scan a URL, aggregate multiple audit engines, and generate actionable AI repair notes.
-- **Recent hardening:** frontend API calls now use `VITE_API_BASE_URL`, YellowLab polling has a timeout, and unused backend packages were removed.
-- **Validation:** frontend `npm run lint`, frontend `npm run build`, and backend JavaScript syntax checks.
-Gelişmiş Dashboard ve İnteraktif AI destekli Web Sayfası Analiz Aracı.
+## Highlights
 
-**Geliştirici:** [Onur Acar](https://github.com/onuracar-dev) | ✉️ onuracar.work@gmail.com
+- Performance, SEO, accessibility, and code-quality oriented website checks
+- Lighthouse and Axe based audit pipeline
+- YellowLabTools integration with bounded polling
+- Gemini-powered fix suggestions for detected issues
+- React dashboard with report persistence in local storage
+- Configurable frontend API base URL through `VITE_API_BASE_URL`
 
-Bu proje, bir web sitesinin Performans, SEO ve Erişilebilirlik (Accessibility) metriklerini **Lighthouse, YellowLabTools ve Axe DevTools** kullanarak denetler ve "AI ile Çöz" butonu sayesinde **Gemini 2.5 Flash** kullanarak anında nokta atışı kod çözümleri sunar.
+## Architecture
 
----
+- `frontend/` - React, Vite, Framer Motion, Recharts
+- `backend/` - Express API, Lighthouse, Puppeteer, Axe, Gemini integration
+- `backend/analyzers/` - individual analyzer modules
 
-## 🚀 Başka Bir Cihazda Nasıl Çalıştırılır?
+## Environment
 
-Bu projeyi farklı bir bilgisayara taşıdığınızda sorunsuz çalıştırmak için aşağıdaki adımları sırayla izleyin.
-
-### 1. Gereksinimler
-Bilgisayarınızda şunların kurulu olduğundan emin olun:
-- **Node.js** (v18 veya üzeri önerilir): indirmek için [nodejs.org](https://nodejs.org/)
-- **Git** (isteğe bağlı)
-- Stabil bir internet bağlantısı (Test araçlarının sayfaları gezebilmesi için)
-
-### 2. Bağımlılıkları (Kütüphaneleri) Yükleme
-Proje iki klasörden (Backend ve Frontend) oluşur. İkisinin de kütüphanelerini ayrı ayrı indirmelisiniz.
-
-**Backend Kütüphaneleri:**
-Terminali (CMD veya PowerShell) açın ve `backend` klasörüne gidin, ardından şu komutu çalıştırın:
-```bash
-cd backend
-npm install
-```
-*(Bu işlem Lighthouse, Express, Puppeteer, Axe ve Yellowlab kütüphanelerini indirecektir.)*
-
-**Frontend Kütüphaneleri:**
-Yeni bir terminal açın ve `frontend` klasörüne gidin, ardından şu komutu çalıştırın:
-```bash
-cd frontend
-npm install
-```
-*(Bu işlem React, Vite, Framer Motion ve diğer arayüz araçlarını indirecektir.)*
-
-### 3. Çevre Değişkenlerini (API Key) Ayarlama
-Backend'in yapay zeka özelliklerini kullanabilmesi için Gemini API anahtarına ihtiyacı vardır. 
-`backend` klasörünün içinde `.env` adında bir dosya oluşturun (eğer yoksa) ve içine şunları yazın:
+Backend `.env`:
 
 ```env
 PORT=5000
-GEMINI_API_KEY=BURAYA_KENDI_GEMINI_API_ANAHTARINIZI_YAZIN
+GEMINI_API_KEY=your_gemini_api_key
 ```
-*(Eğer bir API anahtarınız yoksa [Google AI Studio](https://aistudio.google.com/app/apikey) adresinden ücretsiz alabilirsiniz.)*
 
-### 4. Projeyi Başlatma
+Frontend `.env`:
 
-Aynı anda hem Backend'i hem de Frontend'i çalıştırmalısınız.
+```env
+VITE_API_BASE_URL=http://localhost:5000
+```
 
-**1. Terminal (Backend):**
+## Local Development
+
+Backend:
+
 ```bash
 cd backend
-npm run start
+npm install
+npm start
 ```
-*(Ekranda "Server is running on port 5000" yazısını görmelisiniz.)*
 
-**2. Terminal (Frontend):**
+Frontend:
+
 ```bash
 cd frontend
+npm install
 npm run dev
 ```
-*(Ekranda "Local: http://localhost:5173" yazısını görmelisiniz.)*
 
-Her şey hazır! Tarayıcınızda `http://localhost:5173` adresine giderek analiz aracını kullanmaya başlayabilirsiniz.
+Open the Vite URL, usually `http://localhost:5173`.
 
----
+## Validation
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+```bash
+cd backend
+node --check server.js
+```
+
+## Recent Hardening
+
+- Replaced hardcoded frontend API URLs with `VITE_API_BASE_URL`
+- Added timeout protection to YellowLab polling
+- Removed unused backend dependencies
+- Fixed frontend dependency resolution so normal `npm install` works
+
+## Author
+
+Onur Acar - <https://github.com/onuracar-dev>

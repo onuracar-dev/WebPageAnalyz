@@ -1,14 +1,15 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "check": "node --check server.js"
   },
   "keywords": [],
   "author": "Onur Acar <onuracar.work@gmail.com> (https://github.com/onuracar-dev)",
   "license": "ISC",
-  "description": "",
+  "description": "Backend API for the WebPage Analyzer audit dashboard.",
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "axe-puppeteer": "^1.1.1",
