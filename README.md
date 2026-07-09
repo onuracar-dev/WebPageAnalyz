@@ -1,4 +1,12 @@
 # WebPage Analyzer (v2.0)
+
+## Project Snapshot
+
+WebPage Analyzer is a full-stack audit dashboard that combines Lighthouse, YellowLabTools, Axe, and Gemini-powered remediation suggestions. It is useful as a portfolio project because it turns raw technical reports into an interactive workflow for performance, SEO, accessibility, and code-fix guidance.
+
+- **Core idea:** scan a URL, aggregate multiple audit engines, and generate actionable AI repair notes.
+- **Recent hardening:** frontend API calls now use `VITE_API_BASE_URL`, YellowLab polling has a timeout, and unused backend packages were removed.
+- **Validation:** frontend `npm run lint`, frontend `npm run build`, and backend JavaScript syntax checks.
 Gelişmiş Dashboard ve İnteraktif AI destekli Web Sayfası Analiz Aracı.
 
 **Geliştirici:** [Onur Acar](https://github.com/onuracar-dev) | ✉️ onuracar.work@gmail.com
