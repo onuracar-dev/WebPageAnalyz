@@ -72,7 +72,6 @@ class TaskPool {
             controller.abort(error);
             settle(job.reject, error);
         }, job.timeoutMs);
-        timer.unref?.();
 
         Promise.resolve()
             .then(() => job.task(controller.signal))
