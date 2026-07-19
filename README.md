@@ -4,7 +4,7 @@ Production-oriented, open-source website audit dashboard with AI-assisted remedi
 
 <img src="./docs/assets/preview.svg" alt="WebPage Analyzer dashboard preview">
 
-[Live website](https://webpage-analyzer-4dg55x.v2.appdeploy.ai/) · [GitHub repository](https://github.com/onuracar-dev/WebPageAnalyz)
+[Live website](https://webpage-analyzer.onuracar-work.workers.dev/) · [GitHub repository](https://github.com/onuracar-dev/WebPageAnalyz)
 
 WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, and Gemini in one workflow. A user submits a public URL, the backend runs bounded audits through an SSRF-aware network boundary, and the React dashboard presents prioritized findings.
 
