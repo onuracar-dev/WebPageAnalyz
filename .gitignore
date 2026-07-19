@@ -29,4 +29,5 @@ yarn-error.log*
 # Build outputs
 /frontend/dist/
 /backend/dist/
+/website/dist/
 coverage/

@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      TRUST_PROXY: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      API_KEYS: ${API_KEYS:-}
+      ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}
+      MAX_CONCURRENT_ANALYSES: ${MAX_CONCURRENT_ANALYSES:-1}
+      MAX_QUEUED_ANALYSES: ${MAX_QUEUED_ANALYSES:-8}
+      ALLOWED_TARGET_PORTS: "80,443"
+      KEEP_ANALYZER_ARTIFACTS: "false"
+      CHROME_PATH: /usr/bin/chromium
+      CHROME_NO_SANDBOX: "false"
+    shm_size: 1gb
+    restart: unless-stopped
+    expose:
+      - "5000"
+    volumes:
+      - analyzer-logs:/app/logs
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ""
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  analyzer-logs:

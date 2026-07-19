@@ -1,45 +1,39 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
-const AxeBuilder = require('axe-puppeteer');
+const crypto = require('node:crypto');
+const { AxePuppeteer } = require('@axe-core/puppeteer');
+const { chromeExecutable, chromeFlags } = require('./browser-options');
 
-async function runAxe(url) {
-    const chromePath = require('chrome-launcher').Launcher.getInstallations()[0];
-
-    // Fallback to puppeteer's default if chrome-launcher doesn't find it
-    const launchOptions = { headless: 'new' };
-    if (chromePath) {
-        launchOptions.executablePath = chromePath;
-    }
-
+async function runAxe(url, { artifactDir, proxyUrl, signal, config = {} } = {}) {
     let browser;
+    const abortBrowser = () => browser?.close().catch(() => {});
+    signal?.addEventListener('abort', abortBrowser, { once: true });
     try {
-        browser = await puppeteer.launch(launchOptions);
+        await fs.mkdir(artifactDir, { recursive: true });
+        browser = await puppeteer.launch({
+            headless: true,
+            executablePath: chromeExecutable(config) || undefined,
+            args: chromeFlags(proxyUrl, config)
+        });
+        signal?.throwIfAborted();
         const page = await browser.newPage();
+        page.setDefaultNavigationTimeout(45_000);
 
-        await page.goto(url, { waitUntil: 'networkidle2' });
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 45_000 });
+        signal?.throwIfAborted();
+        const results = await new AxePuppeteer(page).analyze();
 
-        let BuilderClass = AxeBuilder;
-        if (typeof AxeBuilder !== 'function') {
-            BuilderClass = AxeBuilder.default || AxeBuilder.AxePuppeteer || AxeBuilder.AxeBuilder;
-        }
-
-        const results = await new BuilderClass(page).analyze();
-
-        const logPath = path.join(__dirname, '..', `axe_log_${Date.now()}_${Math.random().toString(36).substring(7)}.json`);
-        await fs.writeFile(logPath, JSON.stringify(results, null, 2));
+        const logPath = path.join(artifactDir, `axe_${crypto.randomUUID()}.json`);
+        await fs.writeFile(logPath, JSON.stringify(results), { mode: 0o600 });
 
         return {
             logPath,
             violationsCount: results.violations.length
         };
-    } catch (error) {
-        console.error("Axe DevTools Failed:", error.message);
-        throw error;
     } finally {
-        if (browser) {
-            try { await browser.close(); } catch (e) { }
-        }
+        signal?.removeEventListener('abort', abortBrowser);
+        if (browser) await browser.close().catch(() => {});
     }
 }
 

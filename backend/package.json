@@ -1,23 +1,55 @@
 {
-  "name": "backend",
+  "name": "webpage-analyzer-api",
   "version": "1.0.0",
+  "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js"
+    "dev": "node --watch server.js",
+    "check": "node scripts/check-syntax.js",
+    "build": "npm run check",
+    "lint": "eslint .",
+    "test": "node --test --test-concurrency=1",
+    "test:coverage": "node --test --test-concurrency=1 --experimental-test-coverage"
   },
   "keywords": [],
   "author": "Onur Acar <onuracar.work@gmail.com> (https://github.com/onuracar-dev)",
-  "license": "ISC",
+  "license": "MIT",
   "description": "Backend API for the WebPage Analyzer audit dashboard.",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "dependencies": {
+    "@axe-core/puppeteer": "^4.12.1",
     "@google/generative-ai": "^0.24.1",
-    "axe-puppeteer": "^1.1.1",
     "chrome-launcher": "^1.2.1",
     "cors": "^2.8.6",
-    "dotenv": "^17.3.1",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "lighthouse": "^12.6.1",
-    "puppeteer": "^24.37.5"
+    "express-rate-limit": "^8.6.0",
+    "helmet": "^8.3.0",
+    "lighthouse": "12.6.1",
+    "puppeteer": "^24.43.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^16.5.0",
+    "supertest": "^7.2.2"
+  },
+  "overrides": {
+    "basic-ftp": "^5.3.1",
+    "ip-address": "^10.2.0",
+    "js-yaml": "^4.1.2",
+    "lodash-es": "^4.18.1",
+    "path-to-regexp": "^8.4.2",
+    "qs": "^6.15.3",
+    "puppeteer-core": {
+      "ws": "^8.21.1"
+    },
+    "lighthouse": {
+      "ws": "^7.5.11"
+    }
   }
 }

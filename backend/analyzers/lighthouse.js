@@ -1,66 +1,56 @@
 const chromeLauncher = require('chrome-launcher');
-const lighthouse = require('lighthouse');
 const fs = require('fs').promises;
 const path = require('path');
+const crypto = require('node:crypto');
+const { chromeExecutable, chromeFlags } = require('./browser-options');
 
-async function runLighthouse(url) {
+async function runLighthouse(url, { artifactDir, proxyUrl, signal, config = {} } = {}) {
+    const createdPaths = [];
     try {
         const lighthouseParams = (await import('lighthouse')).default;
+        await fs.mkdir(artifactDir, { recursive: true });
 
-        // --- Run Desktop ---
-        let chromeDesktop;
-        let desktopRunnerResult, desktopReport, desktopPath;
-        try {
-            chromeDesktop = await chromeLauncher.launch({ chromeFlags: ['--headless'] });
-            const optionsDesktop = {
-                logLevel: 'info',
-                output: 'json',
-                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-                port: chromeDesktop.port,
-                strategy: 'desktop'
-            };
-
-            desktopRunnerResult = await lighthouseParams(url, optionsDesktop);
-            desktopReport = desktopRunnerResult.report;
-            desktopPath = path.join(__dirname, '..', `lighthouse_desktop_log_${Date.now()}_${Math.random().toString(36).substring(7)}.json`);
-            await fs.writeFile(desktopPath, desktopReport);
-        } finally {
-            if (chromeDesktop) {
-                try { await chromeDesktop.kill(); } catch (e) { }
+        const run = async (strategy) => {
+            signal?.throwIfAborted();
+            let chrome;
+            const abortChrome = () => chrome?.kill().catch(() => {});
+            signal?.addEventListener('abort', abortChrome, { once: true });
+            try {
+                chrome = await chromeLauncher.launch({
+                    chromePath: chromeExecutable(config) || undefined,
+                    chromeFlags: chromeFlags(proxyUrl, config)
+                });
+                signal?.throwIfAborted();
+                const result = await lighthouseParams(url, {
+                    logLevel: 'error',
+                    output: 'json',
+                    onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
+                    port: chrome.port,
+                    strategy,
+                    maxWaitForLoad: 45_000
+                });
+                signal?.throwIfAborted();
+                const reportPath = path.join(artifactDir, `lighthouse_${strategy}_${crypto.randomUUID()}.json`);
+                await fs.writeFile(reportPath, result.report, { mode: 0o600 });
+                createdPaths.push(reportPath);
+                return { result, reportPath };
+            } finally {
+                signal?.removeEventListener('abort', abortChrome);
+                if (chrome) await chrome.kill().catch(() => {});
             }
-        }
+        };
 
-        // --- Run Mobile ---
-        let chromeMobile;
-        let mobileRunnerResult, mobileReport, mobilePath;
-        try {
-            chromeMobile = await chromeLauncher.launch({ chromeFlags: ['--headless'] });
-            const optionsMobile = {
-                logLevel: 'info',
-                output: 'json',
-                onlyCategories: ['performance', 'accessibility', 'best-practices', 'seo'],
-                port: chromeMobile.port,
-                strategy: 'mobile'
-            };
-
-            mobileRunnerResult = await lighthouseParams(url, optionsMobile);
-            mobileReport = mobileRunnerResult.report;
-            mobilePath = path.join(__dirname, '..', `lighthouse_mobile_log_${Date.now()}_${Math.random().toString(36).substring(7)}.json`);
-            await fs.writeFile(mobilePath, mobileReport);
-        } finally {
-            if (chromeMobile) {
-                try { await chromeMobile.kill(); } catch (e) { }
-            }
-        }
+        const desktop = await run('desktop');
+        const mobile = await run('mobile');
 
         return {
-            desktopPath,
-            mobilePath,
-            desktopScore: desktopRunnerResult.lhr.categories?.performance ? desktopRunnerResult.lhr.categories.performance.score * 100 : 0,
-            mobileScore: mobileRunnerResult.lhr.categories?.performance ? mobileRunnerResult.lhr.categories.performance.score * 100 : 0
+            desktopPath: desktop.reportPath,
+            mobilePath: mobile.reportPath,
+            desktopScore: (desktop.result.lhr.categories?.performance?.score || 0) * 100,
+            mobileScore: (mobile.result.lhr.categories?.performance?.score || 0) * 100
         };
     } catch (err) {
-        console.error("Lighthouse Failed", err);
+        await Promise.all(createdPaths.map((file) => fs.unlink(file).catch(() => {})));
         throw err;
     }
 }
