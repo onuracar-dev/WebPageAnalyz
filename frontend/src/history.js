@@ -49,6 +49,7 @@ export function createHistoryEntry(url, report, now = new Date()) {
     report,
     solutions: {},
     executiveSummary: null,
+    executiveSummaries: {},
   }
 }
 
@@ -65,6 +66,7 @@ export function serializeReport(entry) {
     analyzedAt: entry.createdAt,
     report: entry.report,
     executiveSummary: entry.executiveSummary,
+    executiveSummaries: entry.executiveSummaries,
     solutions: entry.solutions,
   }, null, 2)
 }

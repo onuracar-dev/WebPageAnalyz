@@ -1,90 +1,87 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
+import { animate, createTimeline, stagger } from 'animejs';
 import {
-  Accessibility,
-  Activity,
   ArrowRight,
   ArrowUpRight,
   Bot,
-  CheckCircle2,
+  Check,
   ChevronRight,
   CircleAlert,
-  Code2,
-  Container,
-  Download,
-  ExternalLink,
   FileJson,
-  Github,
-  Globe2,
   Gauge,
-  History,
+  Globe2,
   Menu,
   Network,
-  Printer,
   ScanLine,
-  Search,
-  ServerCog,
   ShieldCheck,
-  Sparkles,
   X,
-  Zap,
 } from 'lucide-react';
+import BloomScene from './BloomScene';
 
 type Category = 'performance' | 'accessibility' | 'seo' | 'bestPractices';
+type ScanStage = 'ready' | 'running' | 'complete';
 
-const preloadSnippet = '<link rel="preload"\n  as="image"\n  href="/hero.webp">';
-
-const categories: Array<{ id: Category; label: string; icon: typeof Gauge }> = [
-  { id: 'performance', label: 'Performance', icon: Zap },
-  { id: 'accessibility', label: 'Accessibility', icon: Accessibility },
-  { id: 'seo', label: 'SEO', icon: Search },
-  { id: 'bestPractices', label: 'Best practices', icon: Activity },
+const categories: Array<{ id: Category; label: string; short: string }> = [
+  { id: 'performance', label: 'Performance', short: 'PERF' },
+  { id: 'accessibility', label: 'Accessibility', short: 'A11Y' },
+  { id: 'seo', label: 'Search', short: 'SEO' },
+  { id: 'bestPractices', label: 'Best practices', short: 'B/P' },
 ];
 
-const issueMap: Record<Category, Array<{ title: string; detail: string; impact: 'high' | 'medium' | 'low' }>> = {
+const evidence: Record<Category, Array<{ title: string; detail: string; impact: 'critical' | 'high' | 'medium'; owner: string }>> = {
   performance: [
-    { title: 'Largest Contentful Paint', detail: 'Hero image is discovered late and blocks the primary paint.', impact: 'high' },
-    { title: 'Unused JavaScript', detail: 'Defer 84 KB from the initial route.', impact: 'medium' },
-    { title: 'Cache policy', detail: 'Two static assets use short cache lifetimes.', impact: 'low' },
+    { title: 'The LCP image arrives late', detail: 'The browser discovers the main image after layout CSS. Give it the first network window.', impact: 'critical', owner: 'Frontend' },
+    { title: '84 KB of JavaScript can wait', detail: 'This code does not change the first view or the first interaction.', impact: 'high', owner: 'Platform' },
+    { title: 'Two assets expire too early', detail: 'Versioned files return a short cache policy and cost repeat visitors another request.', impact: 'medium', owner: 'Infra' },
   ],
   accessibility: [
-    { title: 'Form label', detail: 'Newsletter input has no programmatic label.', impact: 'high' },
-    { title: 'Color contrast', detail: 'Muted button text does not reach 4.5:1.', impact: 'medium' },
-    { title: 'Heading order', detail: 'A heading level is skipped in the footer.', impact: 'low' },
+    { title: 'Checkout has lost its label', detail: 'The email field looks named, but assistive technology receives no programmatic label.', impact: 'critical', owner: 'Frontend' },
+    { title: 'Muted copy misses AA contrast', detail: 'Secondary control text falls below the required contrast ratio on the dark panel.', impact: 'high', owner: 'Design' },
+    { title: 'The heading order jumps', detail: 'The footer moves from an H2 to an H4 and breaks the document outline.', impact: 'medium', owner: 'Content' },
   ],
   seo: [
-    { title: 'Canonical URL', detail: 'No canonical link is declared for this route.', impact: 'medium' },
-    { title: 'Meta description', detail: 'Description exceeds the useful snippet range.', impact: 'low' },
-    { title: 'Link text', detail: 'Two links use ambiguous “learn more” labels.', impact: 'low' },
+    { title: 'The canonical route is missing', detail: 'The page never declares which public URL should own its search signals.', impact: 'high', owner: 'Growth' },
+    { title: 'The search description will clip', detail: 'The current description is longer than the useful result preview.', impact: 'medium', owner: 'Content' },
+    { title: 'Two links have no destination clue', detail: 'Repeated “learn more” labels do not describe where the link goes.', impact: 'medium', owner: 'Content' },
   ],
   bestPractices: [
-    { title: 'Console errors', detail: 'A third-party widget logs an uncaught error.', impact: 'high' },
-    { title: 'Image dimensions', detail: 'One image renders at an incorrect aspect ratio.', impact: 'medium' },
-    { title: 'Deprecated API', detail: 'A browser API in one dependency is deprecated.', impact: 'low' },
+    { title: 'A widget fails on every load', detail: 'A third-party script throws before the page becomes interactive.', impact: 'critical', owner: 'Platform' },
+    { title: 'One image is visibly stretched', detail: 'The rendered dimensions do not match the source aspect ratio.', impact: 'high', owner: 'Frontend' },
+    { title: 'A browser API is near removal', detail: 'One dependency still calls an interface browsers have marked as deprecated.', impact: 'medium', owner: 'Platform' },
   ],
 };
 
-function AnalyzerMark() {
-  return <span className="analyzer-mark" aria-hidden="true"><ScanLine /><i /></span>;
-}
+const witnesses = [
+  { name: 'Lighthouse', line: 'Speed, search and browser quality.' },
+  { name: 'Axe', line: 'Accessibility failures tied to the markup.' },
+  { name: 'YellowLab', line: 'Page weight and frontend complexity.' },
+];
 
 function makeScores(value: string) {
   const seed = [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
   return {
-    performance: 62 + seed % 25,
-    accessibility: 73 + (seed * 3) % 22,
-    seo: 78 + (seed * 5) % 19,
-    bestPractices: 69 + (seed * 7) % 25,
+    performance: 58 + seed % 31,
+    accessibility: 70 + (seed * 3) % 25,
+    seo: 76 + (seed * 5) % 21,
+    bestPractices: 66 + (seed * 7) % 29,
   };
 }
 
-function Score({ label, score, icon: Icon }: { label: string; score: number; icon: typeof Gauge }) {
-  return (
-    <article className="score-card">
-      <div className="score-card__top"><Icon /><span>{label}</span></div>
-      <div className="score-ring" style={{ '--score': score } as CSSProperties}><strong>{score}</strong><span>/100</span></div>
-    </article>
-  );
+function AnalyzerMark() {
+  return <span className="wpa-mark" aria-hidden="true"><ScanLine /><i /></span>;
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  return reduced;
 }
 
 function ProductSite() {
@@ -92,151 +89,316 @@ function ProductSite() {
   const [url, setUrl] = useState('https://example.com');
   const [analyzedUrl, setAnalyzedUrl] = useState('https://example.com');
   const [activeCategory, setActiveCategory] = useState<Category>('performance');
+  const [scanStage, setScanStage] = useState<ScanStage>('ready');
   const [error, setError] = useState('');
+  const navRef = useRef<HTMLElement>(null);
+  const scanTimers = useRef<number[]>([]);
+  const reducedMotion = useReducedMotion();
 
   const scores = useMemo(() => makeScores(analyzedUrl), [analyzedUrl]);
+  const hostname = useMemo(() => {
+    try { return new URL(analyzedUrl).hostname; } catch { return 'example.com'; }
+  }, [analyzedUrl]);
+  const overallScore = Math.round(Object.values(scores).reduce((sum, score) => sum + score, 0) / 4);
+
+  useEffect(() => {
+    if (reducedMotion) return undefined;
+    const intro = createTimeline({ defaults: { ease: 'outExpo' } })
+      .add('.site-nav', { opacity: [0, 1], y: [-24, 0], duration: 900 }, 0)
+      .add('.hero-line > span', { y: ['115%', '0%'], rotate: [3, 0], duration: 1200, delay: stagger(110) }, 90)
+      .add('.hero-summary', { opacity: [0, 1], y: [24, 0], duration: 900 }, 380)
+      .add('.bloom-scene', { opacity: [0, 1], scale: [1.035, 1], duration: 1500 }, 180)
+      .add('.command-bar', { opacity: [0, 1], y: [36, 0], duration: 1000 }, 620);
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting || entry.target.classList.contains('is-visible')) return;
+        entry.target.classList.add('is-visible');
+        const children = entry.target.querySelectorAll(':scope > [data-reveal-item]');
+        animate(children.length ? children : entry.target, {
+          opacity: [0, 1],
+          y: [46, 0],
+          duration: 1050,
+          delay: children.length ? stagger(95) : 0,
+          ease: 'outExpo',
+        });
+        observer.unobserve(entry.target);
+      });
+    }, { threshold: 0.14 });
+
+    document.querySelectorAll('[data-reveal]').forEach((element) => observer.observe(element));
+    return () => {
+      intro.revert();
+      observer.disconnect();
+    };
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    const updateScroll = () => {
+      const available = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
+      document.documentElement.style.setProperty('--page-progress', `${window.scrollY / available}`);
+    };
+    updateScroll();
+    window.addEventListener('scroll', updateScroll, { passive: true });
+    return () => window.removeEventListener('scroll', updateScroll);
+  }, []);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || reducedMotion) return undefined;
+
+    const current = { x: 0.22, y: 0.15, pressure: 0 };
+    const target = { ...current };
+    let frame = 0;
+
+    const render = () => {
+      current.x += (target.x - current.x) * 0.09;
+      current.y += (target.y - current.y) * 0.09;
+      current.pressure += (target.pressure - current.pressure) * 0.08;
+      nav.style.setProperty('--liquid-x', `${current.x * 100}%`);
+      nav.style.setProperty('--liquid-y', `${current.y * 100}%`);
+      nav.style.setProperty('--liquid-tilt-x', `${(0.5 - current.y) * current.pressure * 1.15}deg`);
+      nav.style.setProperty('--liquid-tilt-y', `${(current.x - 0.5) * current.pressure * 1.5}deg`);
+      nav.style.setProperty('--liquid-pressure', current.pressure.toFixed(3));
+      nav.style.setProperty('--liquid-shadow-alpha', (0.2 + current.pressure * 0.08).toFixed(3));
+      nav.style.setProperty('--liquid-highlight-alpha', (0.58 + current.pressure * 0.34).toFixed(3));
+      nav.style.setProperty('--liquid-dark-alpha', (0.02 + current.pressure * 0.07).toFixed(3));
+      nav.style.setProperty('--liquid-flow-opacity', (0.34 + current.pressure * 0.24).toFixed(3));
+      nav.style.setProperty('--liquid-shift', `${(current.pressure - 0.5) * 5}px`);
+      frame = window.requestAnimationFrame(render);
+    };
+
+    const move = (event: PointerEvent) => {
+      const bounds = nav.getBoundingClientRect();
+      target.x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+      target.y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
+      target.pressure = 1;
+    };
+
+    const leave = () => {
+      target.x = 0.5;
+      target.y = 0.3;
+      target.pressure = 0;
+    };
+
+    nav.addEventListener('pointermove', move, { passive: true });
+    nav.addEventListener('pointerleave', leave);
+    frame = window.requestAnimationFrame(render);
+    return () => {
+      nav.removeEventListener('pointermove', move);
+      nav.removeEventListener('pointerleave', leave);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [reducedMotion]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
+    window.addEventListener('keydown', close);
+    return () => window.removeEventListener('keydown', close);
+  }, [menuOpen]);
+
+  useEffect(() => () => scanTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
   const runSample = (event: FormEvent) => {
     event.preventDefault();
+    let parsed: URL;
     try {
-      const parsed = new URL(url);
-      const hostname = parsed.hostname.toLowerCase();
+      parsed = new URL(url);
+      const parsedHostname = parsed.hostname.toLowerCase();
       if (
         !['http:', 'https:'].includes(parsed.protocol)
-        || !hostname
+        || !parsedHostname
         || parsed.username
         || parsed.password
-        || hostname === 'localhost'
-        || hostname.endsWith('.localhost')
+        || parsedHostname === 'localhost'
+        || parsedHostname.endsWith('.localhost')
       ) throw new Error();
-      setAnalyzedUrl(parsed.toString());
-      setError('');
-      document.getElementById('sample-report')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch {
-      setError('Enter a complete public HTTP or HTTPS URL.');
+      setError('Use a complete public HTTP or HTTPS URL.');
+      return;
     }
+
+    scanTimers.current.forEach((timer) => window.clearTimeout(timer));
+    setError('');
+    setScanStage('running');
+    const stepDelay = reducedMotion ? 180 : 1200;
+    scanTimers.current.push(window.setTimeout(() => {
+      setAnalyzedUrl(parsed.toString());
+      setScanStage('complete');
+      window.dispatchEvent(new CustomEvent('wpa:scroll-to', { detail: '#report' }));
+    }, stepDelay));
   };
 
+  const closeMenu = () => setMenuOpen(false);
+
   return (
-    <div className="analyzer-site">
-      <a className="skip" href="#main">Skip to content</a>
-      <header>
-        <a className="brand" href="#top" aria-label="WebPage Analyzer home"><AnalyzerMark /><span>WebPage<br /><strong>Analyzer</strong></span></a>
-        <nav id="primary-navigation" className={menuOpen ? 'nav nav--open' : 'nav'} aria-label="Primary navigation">
-          <a href="#workflow" onClick={() => setMenuOpen(false)}>Workflow</a>
-          <a href="#sample-report" onClick={() => setMenuOpen(false)}>Sample report</a>
-          <a href="#security" onClick={() => setMenuOpen(false)}>Security</a>
-          <a href="#deploy" onClick={() => setMenuOpen(false)}>Self-host</a>
-          <a className="github" href="https://github.com/onuracar-dev/WebPageAnalyz" target="_blank" rel="noreferrer"><Github /> GitHub</a>
+    <div className="wpa-site" data-scan-stage={scanStage}>
+      <a className="skip-link" href="#main">Skip to content</a>
+
+      <header className="site-nav" ref={navRef}>
+        <span className="nav-liquid" aria-hidden="true"><span className="nav-liquid__flow"><i /><i /><i /></span></span>
+        <a className="site-brand" href="#top" aria-label="WebPage Analyzer home"><AnalyzerMark /><span>WPA<sup>®</sup></span></a>
+        <nav id="primary-navigation" className={menuOpen ? 'nav-links nav-links--open' : 'nav-links'} aria-label="Primary navigation">
+          <a href="#method" onClick={closeMenu}>Product</a>
+          <a href="#anatomy" onClick={closeMenu}>Findings</a>
+          <a href="#report" onClick={closeMenu}>Sample report</a>
+          <a href="#deployment" onClick={closeMenu}>Deployment</a>
         </nav>
-        <button className="menu" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="primary-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X /> : <Menu />}</button>
+        <a className="nav-cta" href="mailto:onuracar.work@gmail.com?subject=WebPage%20Analyzer%20private%20demo">Book demo <ArrowUpRight /></a>
+        <button className="menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="primary-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X /> : <Menu />}</button>
+        <i className="nav-progress" aria-hidden="true" />
       </header>
 
       <main id="main">
         <section className="hero" id="top">
-          <div className="hero-copy">
-            <div className="eyebrow"><span>OPEN SOURCE</span><i /> Lighthouse + Axe + YellowLab + optional AI</div>
-            <h1>One URL.<br />A <em>prioritized</em><br />way forward.</h1>
-            <p>Audit performance, accessibility, SEO, best practices, and frontend quality in one security-aware workflow—then turn findings into work your team can act on.</p>
-            <form className="url-form" onSubmit={runSample} noValidate>
-              <label htmlFor="hero-url">Website URL</label>
-              <div><Globe2 /><input id="hero-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} required value={url} onChange={(event) => { setUrl(event.target.value); if (error) setError(''); }} placeholder="https://your-site.com" aria-describedby={error ? 'url-error' : 'sample-note'} aria-invalid={Boolean(error)} /><button type="submit">Explore sample audit <ArrowRight /></button></div>
-              {error && <p id="url-error" className="form-error" role="alert"><CircleAlert /> {error}</p>}
+          <BloomScene reducedMotion={reducedMotion} />
+
+          <div className="hero-content">
+            <h1 aria-label="Your website left clues">
+              <span className="hero-line"><span>YOUR WEBSITE</span></span>
+              <span className="hero-line hero-line--signal"><span>LEFT CLUES.</span></span>
+            </h1>
+            <div className="hero-bottom">
+              <p className="hero-summary">Lighthouse, Axe and YellowLab findings, ranked in one report.</p>
+            </div>
+            <form className="command-bar" onSubmit={runSample} noValidate>
+              <Globe2 aria-hidden="true" />
+              <label htmlFor="sample-url" className="sr-only">Website URL for the sample report</label>
+              <input id="sample-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} required value={url} onChange={(event) => { setUrl(event.target.value); if (error) setError(''); }} aria-describedby={error ? 'url-error' : undefined} aria-invalid={Boolean(error)} />
+              <button type="submit" disabled={scanStage === 'running'}>{scanStage === 'running' ? 'Preparing report' : scanStage === 'complete' ? 'Run again' : 'View sample'} <ArrowRight /></button>
+              {error && <p id="url-error" className="command-error" role="alert"><CircleAlert /> {error}</p>}
             </form>
-            <p id="sample-note" className="sample-note"><Sparkles /> Interactive sample only—no request is sent and no live scan runs on this marketing page.</p>
           </div>
+        </section>
 
-          <div className="hero-report" aria-label="Illustrative audit report">
-            <div className="report-sheet report-sheet--back"><span>ACCESSIBILITY</span><strong>91</strong></div>
-            <div className="report-sheet report-sheet--middle"><span>SEO</span><strong>94</strong></div>
-            <div className="report-sheet report-sheet--front">
-              <div className="sheet-top"><div><ScanLine /><span>audit / overview</span></div><span className="live-dot">sample</span></div>
-              <p>example.com</p>
-              <strong className="hero-score">78<span>/100</span></strong>
-              <div className="hero-bars"><span style={{ width: '78%' }} /><span style={{ width: '91%' }} /><span style={{ width: '94%' }} /><span style={{ width: '84%' }} /></div>
-              <div className="sheet-finding"><i>01</i><CircleAlert /><div><strong>Prioritize LCP image</strong><span>potential 0.8s improvement</span></div><ChevronRight /></div>
-              <div className="sheet-finding"><i>02</i><Accessibility /><div><strong>Restore input label</strong><span>critical user path</span></div><ChevronRight /></div>
-              <div className="sheet-stamp">illustrative dataset · local interaction</div>
+        <section className="witness-section" id="method">
+          <div className="section-shell witness-intro" data-reveal>
+            <h2 data-reveal-item>Three audits.<br /><em>One fix list.</em></h2>
+            <p data-reveal-item>Each finding keeps its source and the affected element.</p>
+          </div>
+          <div className="witness-list section-shell" data-reveal>
+            {witnesses.map((engine) => (
+              <article key={engine.name} data-reveal-item>
+                <h3>{engine.name}</h3>
+                <p>{engine.line}</p>
+                <ArrowUpRight />
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="anatomy-section" id="anatomy">
+          <div className="section-shell anatomy-layout">
+            <div className="anatomy-copy" data-reveal>
+              <h2 data-reveal-item>The problem,<br /><em>pinned to the page.</em></h2>
+              <p data-reveal-item>Open a finding and see the element, impact and owner.</p>
+            </div>
+
+            <div className="inspection-stage" aria-label="A selected button inspected with three attached findings">
+              <svg className="inspection-paths" viewBox="0 0 760 720" aria-hidden="true">
+                <path d="M92 174 C194 174 184 258 302 282" />
+                <path d="M671 126 C576 174 612 257 500 302" />
+                <path d="M676 596 C573 568 591 482 491 444" />
+              </svg>
+              <div className="inspection-lens">
+                <span>SELECTED ELEMENT</span>
+                <strong>&lt;button&gt;</strong>
+                <div className="inspection-element">START NOW</div>
+                <p>Accessible name <b>missing</b></p>
+              </div>
+              <span className="inspection-pin inspection-pin--one"><i>01</i><b>Axe</b><small>Label missing</small></span>
+              <span className="inspection-pin inspection-pin--two"><i>02</i><b>Lighthouse</b><small>Late dependency</small></span>
+              <span className="inspection-pin inspection-pin--three"><i>03</i><b>Owner</b><small>Frontend</small></span>
             </div>
           </div>
         </section>
 
-        <section className="engine-strip" aria-label="Audit engines"><span>Powered by proven engines</span><strong>LIGHTHOUSE</strong><strong>axe</strong><strong>YELLOWLAB</strong><strong>GEMINI <i>optional</i></strong></section>
+        <section className="report-section" id="report">
+          <div className="section-shell report-intro" data-reveal>
+            <h2 data-reveal-item>A ranked list.<br /><em>Evidence attached.</em></h2>
+          </div>
 
-        <section className="workflow" id="workflow">
-          <div className="section-heading"><span className="section-number">01</span><div><p className="kicker">FROM URL TO ACTION</p><h2>One bounded workflow.<br />Four useful layers.</h2></div><p>The dashboard preserves raw evidence while moving the highest-impact work to the top.</p></div>
-          <div className="workflow-grid">
-            <article><span>01</span><Globe2 /><h3>Validate the target</h3><p>Credential-free public HTTP(S), explicit ports, DNS/IP checks, and redirect/subresource enforcement.</p></article>
-            <article><span>02</span><Gauge /><h3>Run bounded audits</h3><p>Lighthouse, Axe, and YellowLab execute behind concurrency, duration, connection, and byte limits.</p></article>
-            <article><span>03</span><ScanLine /><h3>Prioritize evidence</h3><p>Scores, engine status, and category findings live together instead of across disconnected reports.</p></article>
-            <article><span>04</span><Bot /><h3>Ask for remediation</h3><p>Gemini suggestions are opt-in, visibly separated, and keep the source finding in view.</p></article>
+          <div className="report-shell section-shell" data-reveal>
+            <div className="report-chrome" data-reveal-item>
+              <span><AnalyzerMark /> WPA / CASE 001</span><b>{hostname}</b><span>EVIDENCE LOCKED</span>
+            </div>
+            <div className="report-overview" data-reveal-item>
+              <div className="score-orbit" style={{ '--score': `${overallScore * 3.6}deg` } as CSSProperties}>
+                <div><strong>{overallScore}</strong><span>OVERALL<br />SIGNAL</span></div>
+              </div>
+              <div className="report-title"><span>AUDIT SUBJECT</span><h3>{hostname}</h3><p>12 findings collected across three independent engines.</p></div>
+              <div className="report-sparkline" aria-hidden="true"><span>REQUEST LOAD</span><svg viewBox="0 0 280 64"><path d="M0 52 L24 49 L40 51 L58 30 L78 34 L98 18 L119 28 L140 25 L160 38 L180 9 L199 19 L219 13 L242 27 L260 18 L280 21" /></svg><b>2.4 MB</b></div>
+            </div>
+
+            <div className="report-score-nav" data-reveal-item>
+              {categories.map((category) => (
+                <button key={category.id} type="button" className={activeCategory === category.id ? 'active' : ''} onClick={() => setActiveCategory(category.id)} aria-pressed={activeCategory === category.id}>
+                  <span>{category.short}</span><strong>{scores[category.id]}</strong><i style={{ '--value': `${scores[category.id]}%` } as CSSProperties} />
+                </button>
+              ))}
+            </div>
+
+            <div className="report-evidence" data-reveal-item>
+              <div className="finding-column" role="region" aria-live="polite" aria-label={`${categories.find((category) => category.id === activeCategory)?.label} sample findings`}>
+                <div className="finding-head"><span>PRIORITY</span><span>FINDING / EVIDENCE</span><span>OWNER</span></div>
+                {evidence[activeCategory].map((issue, index) => (
+                  <article key={issue.title}>
+                    <span className={`priority priority--${issue.impact}`}>{String(index + 1).padStart(2, '0')}<i />{issue.impact}</span>
+                    <div><h4>{issue.title}</h4><p>{issue.detail}</p></div>
+                    <span className="owner">{issue.owner}<ChevronRight /></span>
+                  </article>
+                ))}
+              </div>
+              <aside className="next-move">
+                <span>NEXT MOVE / 01</span>
+                <Gauge />
+                <h3>{evidence[activeCategory][0].title}</h3>
+                <p>{evidence[activeCategory][0].detail}</p>
+                <div><Bot /><span>AI guidance stays off until a person asks for it.</span></div>
+              </aside>
+            </div>
+
+            <div className="report-actions" data-reveal-item><span><Check /> SOURCE VISIBLE</span><span><Check /> ELEMENT ATTACHED</span><span><Check /> OWNER ASSIGNED</span><button type="button"><FileJson /> EXPORT CASE FILE</button></div>
           </div>
         </section>
 
-        <section className="sample-report" id="sample-report">
-          <div className="section-heading"><span className="section-number">02</span><div><p className="kicker">INTERACTIVE SAMPLE</p><h2>Make the report<br />answerable.</h2></div><p>Scores are deterministically modeled from the URL on this page. The production app runs real audit engines on the backend.</p></div>
-          <div className="dashboard">
-            <div className="dashboard-top"><div><AnalyzerMark /><div><span>Sample report</span><strong>{analyzedUrl}</strong></div></div><div><button type="button"><History /> History</button><button type="button"><FileJson /> JSON</button><button type="button"><Printer /> Print</button></div></div>
-            <div className="score-grid">{categories.map(({ id, label, icon }) => <Score key={id} label={label} score={scores[id]} icon={icon} />)}</div>
-            <div className="finding-workspace">
-              <div className="finding-tabs" role="tablist" aria-label="Audit categories">
-                {categories.map(({ id, label, icon: Icon }, index) => <button
-                  id={`category-tab-${id}`}
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-controls="category-panel"
-                  aria-selected={activeCategory === id}
-                  tabIndex={activeCategory === id ? 0 : -1}
-                  onClick={() => setActiveCategory(id)}
-                  onKeyDown={(event) => {
-                    const lastIndex = categories.length - 1;
-                    let nextIndex = index;
-                    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') nextIndex = index === lastIndex ? 0 : index + 1;
-                    else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') nextIndex = index === 0 ? lastIndex : index - 1;
-                    else if (event.key === 'Home') nextIndex = 0;
-                    else if (event.key === 'End') nextIndex = lastIndex;
-                    else return;
-                    event.preventDefault();
-                    const nextCategory = categories[nextIndex].id;
-                    setActiveCategory(nextCategory);
-                    requestAnimationFrame(() => document.getElementById(`category-tab-${nextCategory}`)?.focus());
-                  }}
-                ><Icon /><span>{label}</span><i>{issueMap[id].length}</i></button>)}
+        <section className="boundary-section">
+          <div className="section-shell boundary-intro" data-reveal>
+            <h2 data-reveal-item>Public targets only.</h2>
+            <p data-reveal-item>Private IPs, unsafe redirects and mixed DNS answers are blocked before a browser opens.</p>
+          </div>
+          <div className="boundary-rail section-shell" data-reveal>
+            <div data-reveal-item><span>01</span><Globe2 /><b>Submitted URL</b><small>Credentials rejected</small></div><ArrowRight data-reveal-item />
+            <div data-reveal-item><span>02</span><Network /><b>DNS + IP policy</b><small>Public targets only</small></div><ArrowRight data-reveal-item />
+            <div className="boundary-focus" data-reveal-item><span>03</span><ShieldCheck /><b>Safe proxy</b><small>Redirects checked again</small></div><ArrowRight data-reveal-item />
+            <div data-reveal-item><span>04</span><Gauge /><b>Bounded browser</b><small>Time, bytes, concurrency</small></div>
+          </div>
+        </section>
+
+        <section className="deployment-section" id="deployment">
+          <div className="section-shell deployment-layout">
+            <div className="deployment-content" data-reveal>
+              <h2 data-reveal-item><span>Run it where</span><span>your data lives.</span></h2>
+              <p data-reveal-item>Deploy the analyzer inside your environment. URLs and report history stay there.</p>
+              <div className="deployment-actions" data-reveal-item>
+                <a href="mailto:onuracar.work@gmail.com?subject=WebPage%20Analyzer%20private%20demo">Book a demo <ArrowUpRight /></a>
+                <a href="#report">View sample report</a>
               </div>
-              <div id="category-panel" className="finding-list" role="tabpanel" aria-labelledby={`category-tab-${activeCategory}`}>
-                <div className="finding-list__head"><span>Prioritized findings</span><strong>{categories.find((category) => category.id === activeCategory)?.label}</strong></div>
-                {issueMap[activeCategory].map((issue, index) => <article key={issue.title}><span>{String(index + 1).padStart(2, '0')}</span><i className={`impact impact--${issue.impact}`}>{issue.impact}</i><div><h3>{issue.title}</h3><p>{issue.detail}</p></div><button type="button" aria-label={`Open ${issue.title}`}><ArrowUpRight /></button></article>)}
-              </div>
-              <aside className="ai-panel"><div className="ai-panel__label"><Sparkles /> OPTIONAL AI LAYER</div><h3>Prioritize the LCP image.</h3><p>Preload the hero image, use a responsive source set, and remove lazy loading from the above-the-fold candidate.</p><pre><code>{preloadSnippet}</code></pre><div><CheckCircle2 /> Suggestion stays attached to source evidence</div></aside>
+            </div>
+            <div className="report-lockup" aria-label="Twelve findings ranked from three audit sources">
+              <span>ONE ORDERED REPORT</span>
+              <div><strong>12</strong><p>findings ranked<br />by impact</p></div>
+              <ul>{witnesses.map((engine) => <li key={engine.name}>{engine.name}</li>)}</ul>
             </div>
           </div>
         </section>
-
-        <section className="exports"><div><p className="kicker">REPORTS THAT LEAVE THE DASHBOARD</p><h2>Keep ten locally.<br />Export what matters.</h2></div><div className="export-cards"><article><History /><strong>Local history</strong><span>10 reports · 30 days</span></article><article><Download /><strong>Structured JSON</strong><span>Evidence for your workflow</span></article><article><Printer /><strong>Print / PDF</strong><span>Shareable review artifact</span></article></div><p>History stays in that browser’s local storage. There is no hidden account database in the open-source app.</p></section>
-
-        <section className="security" id="security">
-          <div className="security-copy"><span className="section-number">03</span><p className="kicker">ANALYZING URLS IS HIGH-RISK</p><h2>SSRF defense is<br />a system, not a regex.</h2><p>Every Chromium connection passes through a loopback-only policy proxy that resolves destinations again and rejects private, reserved, mixed-answer, credentialed, and disallowed targets.</p><a href="https://github.com/onuracar-dev/WebPageAnalyz#security-model" target="_blank" rel="noreferrer">Read the complete threat boundary <ArrowUpRight /></a></div>
-          <div className="boundary-diagram">
-            <div className="boundary-step"><span>01</span><Globe2 /><div><strong>submitted URL</strong><small>schema + protocol + port</small></div></div><i><ArrowRight /></i>
-            <div className="boundary-step boundary-step--shield"><span>02</span><ShieldCheck /><div><strong>policy proxy</strong><small>DNS + IP + byte limits</small></div></div><i><ArrowRight /></i>
-            <div className="boundary-step"><span>03</span><Network /><div><strong>public target</strong><small>rechecked on every hop</small></div></div>
-            <p><CircleAlert /> Infrastructure egress rules and runtime isolation are still required in production.</p>
-          </div>
-        </section>
-
-        <section className="deploy" id="deploy">
-          <div className="section-heading"><span className="section-number">04</span><div><p className="kicker">OPEN-SOURCE FIRST</p><h2>Deploy the whole<br />audit boundary.</h2></div><p>The repository includes a non-root backend container, Nginx same-origin proxy, health checks, environment examples, and CI.</p></div>
-          <div className="deploy-grid">
-            <div className="terminal"><div><span /><span /><span /><code>terminal</code></div><pre><code><b>$</b> cp .env.example .env{`\n`}<b>$</b> docker compose up --build -d{`\n\n`}<i>✓</i> frontend / nginx{`\n`}<i>✓</i> analyzer api / non-root{`\n`}<i>✓</i> same-origin /api proxy</code></pre></div>
-            <div className="deploy-notes"><article><Container /><div><h3>Docker baseline</h3><p>Chrome, audit engines, and the app are packaged for repeatable operation.</p></div></article><article><ServerCog /><div><h3>Operator controls</h3><p>Queue, timeout, rate, auth, artifact, proxy, and target-port policies are configurable.</p></div></article><article><ShieldCheck /><div><h3>Conservative defaults</h3><p>AI is optional; admin cleanup is closed unless separately authorized.</p></div></article><a className="primary-button" href="https://github.com/onuracar-dev/WebPageAnalyz" target="_blank" rel="noreferrer"><Github /> Clone and self-host <ArrowRight /></a></div>
-          </div>
-        </section>
-
-        <section className="closing"><div><span>OPEN SOURCE · MIT</span><h2>Turn a noisy audit<br />into the next right fix.</h2></div><div><a className="primary-button" href="https://github.com/onuracar-dev/WebPageAnalyz" target="_blank" rel="noreferrer"><Code2 /> Explore the code <ExternalLink /></a><p>Hosted plans may follow only after the open-source workflow is validated in real use.</p></div></section>
       </main>
 
-      <footer><a className="brand" href="#top"><AnalyzerMark /><span>WebPage<br /><strong>Analyzer</strong></span></a><p>Open-source website auditing by <a href="https://github.com/onuracar-dev">Onur Acar</a>.</p><div><a href="https://github.com/onuracar-dev/WebPageAnalyz">GitHub</a><a href="https://github.com/onuracar-dev/WebPageAnalyz/blob/master/SECURITY.md">Security</a><a href="https://github.com/onuracar-dev/WebPageAnalyz/blob/master/LICENSE">MIT</a></div></footer>
+      <footer className="site-footer section-shell">
+        <a className="site-brand" href="#top"><AnalyzerMark /><span>WPA<sup>®</sup></span></a>
+        <div><a href="https://onuracar.dev" target="_blank" rel="noreferrer">Onur Acar <ArrowUpRight /></a><span>© 2026</span></div>
+      </footer>
     </div>
   );
 }

@@ -16,6 +16,14 @@ function number(value, fallback = 0) {
     return Number.isFinite(value) ? value : fallback;
 }
 
+function emptyScores() {
+    return { performance: null, seo: null, accessibility: null, bestPractices: null };
+}
+
+function emptyCategories() {
+    return { performance: [], seo: [], accessibility: [], bestPractices: [] };
+}
+
 async function readJson(file, maxBytes) {
     const stats = await fs.stat(file);
     if (stats.size > maxBytes) {
@@ -32,40 +40,66 @@ function lighthouseSnippet(audit) {
     return text(items.find((item) => item?.node?.snippet)?.node?.snippet, 10_000) || null;
 }
 
-async function parseLogs(logPaths, { maxArtifactBytes = 50 * 1024 * 1024, maxIssuesPerCategory = 150 } = {}) {
-    const parsed = {
-        scores: { performance: 0, seo: 0, accessibility: 0, bestPractices: 0 },
-        categories: { performance: [], seo: [], accessibility: [], bestPractices: [] }
-    };
+function sortIssues(categories) {
+    for (const issues of Object.values(categories)) {
+        issues.sort((left, right) => number(right.normalizedImpact) - number(left.normalizedImpact));
+    }
+    return categories;
+}
 
-    if (logPaths.lighthouseDesktop) {
-        const lighthouse = await readJson(logPaths.lighthouseDesktop, maxArtifactBytes);
-        for (const [source, target] of Object.entries(categoryMapping)) {
-            const category = lighthouse.categories?.[source];
-            parsed.scores[target] = Math.round(number(category?.score) * 100);
-            for (const reference of Array.isArray(category?.auditRefs) ? category.auditRefs : []) {
-                if (parsed.categories[target].length >= maxIssuesPerCategory) break;
-                const audit = lighthouse.audits?.[reference.id];
-                if (!audit || audit.score === null || audit.score >= 1 || ['manual', 'notApplicable'].includes(audit.scoreDisplayMode)) continue;
-                parsed.categories[target].push({
-                    id: text(audit.id || reference.id, 256),
-                    title: text(audit.title || 'Lighthouse finding', 300),
-                    description: text(audit.description, 10_000),
-                    score: number(audit.score),
-                    displayValue: text(audit.displayValue, 500) || null,
-                    source: 'Lighthouse (Desktop)',
-                    snippet: lighthouseSnippet(audit),
-                    normalizedImpact: (1 - number(audit.score)) * 100
-                });
-            }
+async function parseLighthouse(file, device, maxArtifactBytes, maxIssuesPerCategory) {
+    if (!file) return null;
+    const lighthouse = await readJson(file, maxArtifactBytes);
+    const parsed = { scores: emptyScores(), categories: emptyCategories() };
+
+    for (const [source, target] of Object.entries(categoryMapping)) {
+        const category = lighthouse.categories?.[source];
+        parsed.scores[target] = Number.isFinite(category?.score)
+            ? Math.round(category.score * 100)
+            : null;
+        for (const reference of Array.isArray(category?.auditRefs) ? category.auditRefs : []) {
+            if (parsed.categories[target].length >= maxIssuesPerCategory) break;
+            const audit = lighthouse.audits?.[reference.id];
+            if (!audit || audit.score === null || audit.score >= 1 || ['manual', 'notApplicable'].includes(audit.scoreDisplayMode)) continue;
+            parsed.categories[target].push({
+                id: text(audit.id || reference.id, 256),
+                title: text(audit.title || 'Lighthouse finding', 300),
+                description: text(audit.description, 10_000),
+                score: number(audit.score),
+                displayValue: text(audit.displayValue, 500) || null,
+                source: `Lighthouse (${device})`,
+                snippet: lighthouseSnippet(audit),
+                normalizedImpact: (1 - number(audit.score)) * 100
+            });
         }
     }
+
+    sortIssues(parsed.categories);
+    return parsed;
+}
+
+function mergeCategories(primary, shared, maxIssuesPerCategory) {
+    const merged = emptyCategories();
+    for (const category of Object.keys(merged)) {
+        merged[category] = [...(primary?.[category] || []), ...(shared[category] || [])]
+            .sort((left, right) => number(right.normalizedImpact) - number(left.normalizedImpact))
+            .slice(0, maxIssuesPerCategory);
+    }
+    return merged;
+}
+
+async function parseLogs(logPaths, { maxArtifactBytes = 50 * 1024 * 1024, maxIssuesPerCategory = 150 } = {}) {
+    const [desktop, mobile] = await Promise.all([
+        parseLighthouse(logPaths.lighthouseDesktop, 'Desktop', maxArtifactBytes, maxIssuesPerCategory),
+        parseLighthouse(logPaths.lighthouseMobile, 'Mobile', maxArtifactBytes, maxIssuesPerCategory)
+    ]);
+    const sharedCategories = emptyCategories();
 
     if (logPaths.yellowlab) {
         const yellowLab = await readJson(logPaths.yellowlab, maxArtifactBytes);
         for (const issue of Array.isArray(yellowLab.issues) ? yellowLab.issues : []) {
-            if (parsed.categories.performance.length >= maxIssuesPerCategory) break;
-            parsed.categories.performance.push({
+            if (sharedCategories.performance.length >= maxIssuesPerCategory) break;
+            sharedCategories.performance.push({
                 id: text(issue.rule, 256),
                 title: text(issue.message || 'YellowLab finding', 300),
                 description: `YellowLab constraint violation. Penalty score: ${number(issue.penalty)}`,
@@ -81,14 +115,14 @@ async function parseLogs(logPaths, { maxArtifactBytes = 50 * 1024 * 1024, maxIss
     if (logPaths.axe) {
         const axe = await readJson(logPaths.axe, maxArtifactBytes);
         for (const violation of Array.isArray(axe.violations) ? axe.violations : []) {
-            if (parsed.categories.accessibility.length >= maxIssuesPerCategory) break;
+            if (sharedCategories.accessibility.length >= maxIssuesPerCategory) break;
             const snippets = (Array.isArray(violation.nodes) ? violation.nodes : [])
                 .map((node) => text(node?.html, 10_000))
                 .filter(Boolean)
                 .slice(0, 20);
             const impactScores = { critical: 100, serious: 75, moderate: 50, minor: 25 };
             const impact = text(violation.impact || 'unknown', 32);
-            parsed.categories.accessibility.push({
+            sharedCategories.accessibility.push({
                 id: text(violation.id, 256),
                 title: text(violation.help || 'Accessibility finding', 300),
                 description: `${text(violation.description, 8_000)}${violation.helpUrl ? `\n[More info](${text(violation.helpUrl, 2_000)})` : ''}`,
@@ -103,10 +137,17 @@ async function parseLogs(logPaths, { maxArtifactBytes = 50 * 1024 * 1024, maxIss
         }
     }
 
-    for (const issues of Object.values(parsed.categories)) {
-        issues.sort((left, right) => number(right.normalizedImpact) - number(left.normalizedImpact));
-    }
-    return parsed;
+    sortIssues(sharedCategories);
+    const devices = {};
+    if (desktop) devices.desktop = desktop;
+    if (mobile) devices.mobile = mobile;
+
+    return {
+        scores: desktop?.scores || emptyScores(),
+        categories: mergeCategories(desktop?.categories, sharedCategories, maxIssuesPerCategory),
+        sharedCategories,
+        devices
+    };
 }
 
 module.exports = { parseLogs };

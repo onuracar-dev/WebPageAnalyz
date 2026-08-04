@@ -213,6 +213,29 @@ button:disabled {
 
 
 /* Dashboard UI Tabs & Cards */
+.device-switcher {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.device-switcher button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.8rem;
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+
+.device-switcher button.active {
+  color: #fff;
+  background: rgba(88, 166, 255, 0.15);
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
 .tabs-header {
   display: flex;
   flex-wrap: wrap;
@@ -549,6 +572,13 @@ button:disabled {
   color: #0d1117;
 }
 
+.summary-note {
+  margin: 0.75rem 0 0;
+  color: var(--text-secondary);
+  text-align: center;
+  font-size: 0.85rem;
+}
+
 .summary-box {
   margin-top: 2rem;
   padding: 1.5rem;
@@ -629,6 +659,7 @@ footer a {
 
   .hero,
   .audit-panel,
+  .device-switcher,
   .tabs-header,
   footer,
   .solve-btn {

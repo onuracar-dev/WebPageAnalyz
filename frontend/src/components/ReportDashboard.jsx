@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { Accessibility, Activity, CheckCircle2, Cpu, Loader2, Search, Sparkles, Zap } from 'lucide-react'
+import { Accessibility, Activity, CheckCircle2, Cpu, Laptop, Loader2, Search, Smartphone, Sparkles, Zap } from 'lucide-react'
 import ScoreCard from './ScoreCard.jsx'
+import { availableReportDevices, hasCompleteScores, reportIssuesForDevice, reportScoresForDevice } from '../report.js'
 
 const tabs = [
   { id: 'overview', title: 'Genel Bakış', icon: Cpu },
@@ -43,11 +44,28 @@ function IssueCard({ issue, solution, solving, onSolve }) {
 
 export default function ReportDashboard({ entry, solving, generatingSummary, onSolve, onGenerateSummary }) {
   const [activeTab, setActiveTab] = useState('overview')
-  const { report, solutions, executiveSummary } = entry
-  const category = activeTab === 'overview' ? [] : report.categories?.[activeTab] || []
+  const [activeDevice, setActiveDevice] = useState('desktop')
+  const { report, solutions } = entry
+  const devices = availableReportDevices(report)
+  const selectedDevice = devices.includes(activeDevice) ? activeDevice : devices[0] || 'desktop'
+  const scores = reportScoresForDevice(report, selectedDevice)
+  const category = activeTab === 'overview' ? [] : reportIssuesForDevice(report, activeTab, selectedDevice)
+  const executiveSummary = entry.executiveSummaries?.[selectedDevice]
+    || (selectedDevice === 'desktop' ? entry.executiveSummary : null)
+  const summaryAvailable = hasCompleteScores(report, selectedDevice)
 
   return (
     <section className="glass-panel report-panel" id="report-container">
+      {devices.length > 1 && (
+        <div className="device-switcher" role="group" aria-label="Lighthouse cihaz profili">
+          <button type="button" className={selectedDevice === 'desktop' ? 'active' : ''} onClick={() => setActiveDevice('desktop')}>
+            <Laptop size={17} /> Desktop
+          </button>
+          <button type="button" className={selectedDevice === 'mobile' ? 'active' : ''} onClick={() => setActiveDevice('mobile')}>
+            <Smartphone size={17} /> Mobile
+          </button>
+        </div>
+      )}
       <div className="tabs-header" role="tablist" aria-label="Rapor kategorileri">
         {tabs.map((tab) => {
           const TabIcon = tab.icon
@@ -60,7 +78,7 @@ export default function ReportDashboard({ entry, solving, generatingSummary, onS
               className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
               onClick={() => setActiveTab(tab.id)}
             >
-              <TabIcon size={18} /> {tab.title}{tab.id !== 'overview' ? ` (${report.categories?.[tab.id]?.length || 0})` : ''}
+              <TabIcon size={18} /> {tab.title}{tab.id !== 'overview' ? ` (${reportIssuesForDevice(report, tab.id, selectedDevice).length})` : ''}
             </button>
           )
         })}
@@ -69,20 +87,22 @@ export default function ReportDashboard({ entry, solving, generatingSummary, onS
       {activeTab === 'overview' ? (
         <div>
           <div className="score-cards">
-            <ScoreCard title="Performans" score={report.scores?.performance} icon={<Zap />} />
-            <ScoreCard title="SEO" score={report.scores?.seo} icon={<Search />} />
-            <ScoreCard title="Erişilebilirlik" score={report.scores?.accessibility} icon={<Accessibility />} />
-            <ScoreCard title="En İyi Pratikler" score={report.scores?.bestPractices} icon={<Activity />} />
+            <ScoreCard title="Performans" score={scores.performance} icon={<Zap />} />
+            <ScoreCard title="SEO" score={scores.seo} icon={<Search />} />
+            <ScoreCard title="Erişilebilirlik" score={scores.accessibility} icon={<Accessibility />} />
+            <ScoreCard title="En İyi Pratikler" score={scores.bestPractices} icon={<Activity />} />
           </div>
           {report.meta?.analyzers && (
             <div className="analyzer-status">
               {Object.entries(report.meta.analyzers).map(([name, status]) => (
-                <span key={name} className={status === 'completed' ? 'status-ok' : 'status-warning'}>{name}: {status}</span>
+                <span key={name} className={status === 'completed' ? 'status-ok' : 'status-warning'}>
+                  {name}: {status}{report.meta.analyzerErrors?.[name] ? ` (${report.meta.analyzerErrors[name]})` : ''}
+                </span>
               ))}
             </div>
           )}
           {!executiveSummary ? (
-            <button type="button" className="summary-button" onClick={onGenerateSummary} disabled={generatingSummary}>
+            <button type="button" className="summary-button" onClick={() => onGenerateSummary(selectedDevice)} disabled={generatingSummary || !summaryAvailable}>
               {generatingSummary ? <Loader2 size={20} className="icon-spin" /> : <Sparkles size={20} />}
               {generatingSummary ? 'Yönetici özeti hazırlanıyor' : 'Yönetici özeti üret'}
             </button>
@@ -92,6 +112,7 @@ export default function ReportDashboard({ entry, solving, generatingSummary, onS
               <ReactMarkdown components={markdownComponents}>{executiveSummary}</ReactMarkdown>
             </div>
           )}
+          {!summaryAvailable && <p className="summary-note">Lighthouse skorları tamamlanmadan yönetici özeti üretilemez.</p>}
         </div>
       ) : (
         <div className="issues-list">

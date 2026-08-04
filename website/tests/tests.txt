@@ -1,13 +1,13 @@
 # Tests
 
-## Test 1 - Audit story and sample report load [sanity]
-Viewport: desktop (1280x800)
-Description: Verifies the marketing page and primary sample workflow render.
+## Test 1 - Hero bloom and sample case file [sanity]
+Viewport: desktop (1440x1000)
+Description: Verifies the two-layer bloom hero and primary sample workflow render.
 Steps:
 1. Navigate to the app
-2. Confirm "One URL" and the default "https://example.com" value are visible
-3. Submit "Explore sample audit"
-Expected: The sample report is visible with four category score cards.
+2. Confirm "YOUR WEBSITE LEFT CLUES." and the default "https://example.com" value are visible
+3. Submit "Run the sample"
+Expected: The case file scrolls into view with the target hostname, four score controls and ranked evidence.
 
 ## Test 2 - Invalid URL is rejected
 Viewport: desktop (1280x800)
@@ -15,14 +15,14 @@ Description: Verifies the URL guardrail explains malformed input without pretend
 Steps:
 1. Navigate to the app
 2. Replace the website URL value with "not-a-url"
-3. Submit "Explore sample audit"
-Expected: An alert says "Enter a complete public HTTP or HTTPS URL."
+3. Submit "Run the sample"
+Expected: An alert says "Use a complete public HTTP or HTTPS URL."
 
-## Test 3 - Mobile navigation reaches self-hosting
-Viewport: mobile (375x667)
-Description: Verifies the deployment guidance remains reachable on a narrow viewport.
+## Test 3 - Mobile navigation reaches private deployment
+Viewport: mobile (390x844)
+Description: Verifies the commercial deployment call to action remains reachable on a narrow viewport.
 Steps:
 1. Navigate to the app
 2. Tap the button labeled "Open navigation"
-3. Tap "Self-host"
-Expected: Navigation closes and "Deploy the whole audit boundary" is visible.
+3. Tap "Deploy"
+Expected: Navigation closes and "BRING THE LAB INSIDE." is visible.

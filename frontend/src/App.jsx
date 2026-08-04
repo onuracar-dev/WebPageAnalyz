@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Clock3, Download, History, Loader2, Printer, Search, ShieldCheck, Trash2 } from 'lucide-react'
 import { apiRequest } from './api.js'
 import { createHistoryEntry, loadHistory, reportFileName, saveHistory, serializeReport } from './history.js'
+import { hasCompleteScores, reportScoresForDevice } from './report.js'
 
 const ReportDashboard = lazy(() => import('./components/ReportDashboard.jsx'))
 
@@ -89,8 +90,9 @@ function App() {
     }
   }
 
-  async function handleGenerateSummary() {
-    if (!currentEntry?.report?.scores) return
+  async function handleGenerateSummary(device = 'desktop') {
+    if (!hasCompleteScores(currentEntry?.report, device)) return
+    const scores = reportScoresForDevice(currentEntry.report, device)
     setGeneratingSummary(true)
     setError(null)
     try {
@@ -98,9 +100,13 @@ function App() {
         method: 'POST',
         timeoutMs: 50_000,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scores: currentEntry.report.scores }),
+        body: JSON.stringify({ scores }),
       })
-      updateCurrent((entry) => ({ ...entry, executiveSummary: data.summary }))
+      updateCurrent((entry) => ({
+        ...entry,
+        ...(device === 'desktop' ? { executiveSummary: data.summary } : {}),
+        executiveSummaries: { ...entry.executiveSummaries, [device]: data.summary },
+      }))
     } catch (requestError) {
       setError({ message: requestError.message, requestId: requestError.requestId })
     } finally {

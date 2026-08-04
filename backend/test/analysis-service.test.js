@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadConfig } = require('../config');
 const { createAnalysisService } = require('../services/analysis-service');
+const { killChrome } = require('../analyzers/lighthouse');
 
 const target = { url: 'https://example.com/', hostname: 'example.com' };
 const silentLogger = { info() {}, warn() {}, error() {} };
@@ -15,6 +16,11 @@ function config() {
         YELLOWLAB_TIMEOUT_MS: '1000'
     });
 }
+
+test('Lighthouse cleanup tolerates synchronous and asynchronous launcher failures', async () => {
+    await assert.doesNotReject(() => killChrome({ kill: () => { throw new Error('EPERM'); } }));
+    await assert.doesNotReject(() => killChrome({ kill: async () => { throw new Error('EPERM'); } }));
+});
 
 test('analysis service returns a partial report and always closes its proxy', async () => {
     let stopped = false;
@@ -41,6 +47,8 @@ test('analysis service returns a partial report and always closes its proxy', as
     assert.equal(parsedPaths.lighthouseDesktop, undefined);
     assert.equal(parsedPaths.yellowlab, 'yellowlab.json');
     assert.equal(result.meta.analyzers.lighthouse, 'unavailable');
+    assert.equal(result.meta.analyzerErrors.lighthouse, 'ANALYZER_FAILED');
+    assert.equal(result.meta.analyzerErrors.axe, undefined);
     assert.equal(result.meta.analyzers.axe, 'completed');
     assert.equal(stopped, true);
 });
