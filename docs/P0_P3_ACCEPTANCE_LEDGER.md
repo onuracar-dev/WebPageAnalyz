@@ -21,15 +21,15 @@ are never inferred or executed without the owner's explicit action.
 | Package | Scope | Status |
 | --- | --- | --- |
 | AUTHZ | Admin bootstrap, workspace RBAC, privileged admin operations, legacy API auth | IN_PROGRESS |
-| BILLING | Free/trial model, Stripe lifecycle, catalog consistency | PENDING |
-| DEPLOY | Cloudflare SPA/API routing, live headers, container topology | PENDING |
+| BILLING | Free/trial model, Stripe lifecycle, catalog consistency | IN_PROGRESS |
+| DEPLOY | Cloudflare SPA/API routing, live headers, container topology | IN_PROGRESS |
 | LEGAL | Consent ledger, legal/feature release gates, customer data controls | PENDING |
-| BROWSER-SEC | Browser/ZAP origin, method, egress, and isolation contracts | PENDING |
+| BROWSER-SEC | Browser/ZAP origin, method, egress, and isolation contracts | IN_PROGRESS |
 | RESOURCE-SEC | Source/PDF workloads, quotas, queues, and worker isolation | PENDING |
-| DURABILITY | pg-boss recovery, fan-out, PostgreSQL, readiness, backup/retention | PENDING |
-| REPORTS | Finding normalization, entitlements, reports, evidence, i18n | PENDING |
-| WEB-QUALITY | Type safety, portal reliability, accessibility, canonical UI | PENDING |
-| PLATFORM | CI, supply chain, observability, API contracts, release operations | PENDING |
+| DURABILITY | pg-boss recovery, fan-out, PostgreSQL, readiness, backup/retention | IN_PROGRESS |
+| REPORTS | Finding normalization, entitlements, reports, evidence, i18n | IN_PROGRESS |
+| WEB-QUALITY | Type safety, portal reliability, accessibility, canonical UI | IN_PROGRESS |
+| PLATFORM | CI, supply chain, observability, API contracts, release operations | IN_PROGRESS |
 | FINAL-AUDIT | Integrated full-suite and requirement-by-requirement acceptance | PENDING |
 
 ## P0 release blockers
