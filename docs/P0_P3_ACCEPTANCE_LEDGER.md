@@ -23,9 +23,9 @@ are never inferred or executed without the owner's explicit action.
 | AUTHZ | Admin bootstrap, workspace RBAC, privileged admin operations, legacy API auth | IN_PROGRESS |
 | BILLING | Free/trial model, Stripe lifecycle, catalog consistency | IN_PROGRESS |
 | DEPLOY | Cloudflare SPA/API routing, live headers, container topology | IN_PROGRESS |
-| LEGAL | Consent ledger, legal/feature release gates, customer data controls | PENDING |
+| LEGAL | Consent ledger, legal/feature release gates, customer data controls | IN_PROGRESS |
 | BROWSER-SEC | Browser/ZAP origin, method, egress, and isolation contracts | IN_PROGRESS |
-| RESOURCE-SEC | Source/PDF workloads, quotas, queues, and worker isolation | PENDING |
+| RESOURCE-SEC | Source/PDF workloads, quotas, queues, and worker isolation | IN_PROGRESS |
 | DURABILITY | pg-boss recovery, fan-out, PostgreSQL, readiness, backup/retention | IN_PROGRESS |
 | REPORTS | Finding normalization, entitlements, reports, evidence, i18n | IN_PROGRESS |
 | WEB-QUALITY | Type safety, portal reliability, accessibility, canonical UI | IN_PROGRESS |
