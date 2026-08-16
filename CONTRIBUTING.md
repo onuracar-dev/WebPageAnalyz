@@ -5,7 +5,7 @@ Thanks for improving WebPage Analyzer.
 ## Development workflow
 
 1. Fork the repository and create a focused branch.
-2. Copy the `.env.example` files; never commit real API keys or target data.
+2. Copy the checked-in `environment.template` files to ignored `.env` files; never commit real API keys or target data.
 3. Install dependencies with `npm ci` in both `backend` and `frontend`.
 4. Add tests for behavior changes. Backend tests must mock DNS, browsers, YellowLab, OpenRouter/legacy AI adapters, Resend, and billing providers unless an explicitly guarded manual integration test is being added.
 5. Run the complete verification commands from the README.

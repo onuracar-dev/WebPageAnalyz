@@ -44,7 +44,7 @@ test('safe proxy stop waits for an in-flight start and leaves no listener behind
 });
 
 test('the local backend env example uses the in-process development store by default', async (t) => {
-    const example = dotenv.parse(await fs.readFile(path.join(__dirname, '..', '.env.example'), 'utf8'));
+    const example = dotenv.parse(await fs.readFile(path.join(__dirname, '..', 'environment.template'), 'utf8'));
     const config = loadConfig({ ...example, WORKER_ENABLED: 'true' });
     assert.equal(config.databaseUrl, '');
     assert.equal(config.workerEnabled, true);

@@ -151,7 +151,7 @@ ledger residue, and old unverified ledger rows fail closed.
 
 Production Compose defaults all role-scoped URLs to `sslmode=require`, sets
 certificate verification on, and defaults `MIGRATION_REQUIRE_TLS=true`. The
-checked-in `.env.example` uses those production-safe values. Plaintext is
+checked-in `production.environment.template` uses those production-safe values. Plaintext is
 available only through the explicit `docker-compose.local.yml` development
 overlay, which sets `NODE_ENV=development`, `MIGRATION_REQUIRE_TLS=false`, and
 `sslmode=disable` for the bundled local Postgres. Production operators should

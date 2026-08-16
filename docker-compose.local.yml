@@ -3,7 +3,7 @@
 # budget only for a disposable local QA stack. Endpoint-specific sign-in,
 # analysis, AI, support, redeem and admin-mutation limits remain unchanged.
 # Production deployments must use docker-compose.yml alone with TLS-enabled
-# PostgreSQL and the secure values from .env.example.
+# PostgreSQL and the secure values from production.environment.template.
 services:
   db-migrate:
     environment:

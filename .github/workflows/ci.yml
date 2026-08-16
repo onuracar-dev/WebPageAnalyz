@@ -108,7 +108,7 @@ jobs:
         working-directory: backend
       - run: npm run runtime:drift -- --source-root . --source-only --skip-database
         working-directory: backend
-      - run: docker compose --env-file .env.example config --quiet
+      - run: docker compose --env-file production.environment.template config --quiet
         env:
           PADDLE_API_KEY: ci_paddle_api_key_placeholder
           PADDLE_WEBHOOK_SECRET: ci_paddle_webhook_secret_placeholder

@@ -73,7 +73,7 @@ Create the production environment outside Git and fill every required entry in
 
 ```sh
 cd /srv/webpage-analyzer/app
-sudo install -m 0600 -o DEPLOY_USER -g DEPLOY_USER .env.example .env
+sudo install -m 0600 -o DEPLOY_USER -g DEPLOY_USER production.environment.template .env
 sudo -u DEPLOY_USER editor .env
 ```
 

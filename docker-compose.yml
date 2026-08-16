@@ -78,7 +78,7 @@ services:
       DATABASE_URL: "postgresql://wpa_migrator:${POSTGRES_MIGRATOR_PASSWORD:?Set POSTGRES_MIGRATOR_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${MIGRATION_DATABASE_SSLMODE:-require}"
       QUEUE_DATABASE_URL: "postgresql://wpa_queue:${POSTGRES_QUEUE_PASSWORD:?Set POSTGRES_QUEUE_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${MIGRATION_DATABASE_SSLMODE:-require}"
       MIGRATION_EXPECTED_ROLE: wpa_migrator
-      # Production defaults require TLS. The checked-in local .env.example
+      # Production defaults require TLS. The checked-in production.environment.template
       # explicitly opts into plaintext for the bundled Postgres only.
       MIGRATION_REQUIRE_TLS: ${MIGRATION_REQUIRE_TLS:-true}
       MIGRATION_DATABASE_SSLMODE: ${MIGRATION_DATABASE_SSLMODE:-require}

@@ -106,7 +106,7 @@ test('Compose keeps API secrets and hostile execution on different services', as
     assert.doesNotMatch(compose, /CHROME_NO_SANDBOX:\s*"true"/);
     assert.match(compose, /MIGRATION_REQUIRE_TLS: \$\{MIGRATION_REQUIRE_TLS:-true\}/);
     assert.match(compose, /RATE_LIMIT_MAX: \$\{RATE_LIMIT_MAX:-120\}/);
-    const localEnv = await fs.readFile(path.join(root, '.env.example'), 'utf8');
+    const localEnv = await fs.readFile(path.join(root, 'production.environment.template'), 'utf8');
     assert.match(localEnv, /DATABASE_SSLMODE=require/);
     assert.match(localEnv, /MIGRATION_DATABASE_SSLMODE=require/);
     assert.match(localEnv, /MIGRATION_REQUIRE_TLS=true/);

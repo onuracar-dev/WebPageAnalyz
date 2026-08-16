@@ -6,7 +6,7 @@ The existing React and Express application now runs as a modular monolith with a
 
 Run locally:
 
-1. Copy `.env.example` to `.env` and set the required secrets.
+1. Copy `production.environment.template` to `.env` and set the required secrets.
 2. Start PostgreSQL and set `backend/DATABASE_URL`.
 3. Run `npm run db:migrate` in `backend`.
 4. Run the backend and frontend development servers.

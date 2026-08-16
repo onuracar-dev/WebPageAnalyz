@@ -72,7 +72,7 @@ Review the third-party terms and privacy requirements before operating a public 
 Requirements: Node.js 20.19+ (Node 24 is used in CI), npm, and Chrome/Chromium.
 
 ```bash
-cp backend/.env.example backend/.env
+cp backend/environment.template backend/.env
 cd backend
 npm ci
 npm start
@@ -92,7 +92,7 @@ Local in-process development can use injected provider doubles. The production t
 
 ## Configuration
 
-All options and conservative defaults are documented in [`backend/.env.example`](./backend/.env.example). The most important settings are:
+All options and conservative defaults are documented in [`backend/environment.template`](./backend/environment.template). The most important settings are:
 
 | Variable | Purpose |
 | --- | --- |
@@ -137,7 +137,7 @@ Health endpoints are `GET /healthz` and `GET /readyz`. Error responses contain a
 
 ## Docker deployment
 
-The checked-in root `.env.example` is the production-safe baseline: role-scoped
+The checked-in root `production.environment.template` is the production-safe baseline: role-scoped
 PostgreSQL URLs require TLS. Copy it to `.env`, set separate
 administrator/runtime/migrator/worker/maintenance/queue database passwords and
 service/provider secrets (the resulting file is gitignored), provision the
@@ -151,7 +151,7 @@ boundary explicit by using the local overlay and a separate env file. Do not
 use this command for production:
 
 ```bash
-copy .env.example .env.local
+copy production.environment.template .env.local
 docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.local.yml up --build -d
 ```
 

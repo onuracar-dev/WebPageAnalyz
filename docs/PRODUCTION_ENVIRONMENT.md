@@ -1,6 +1,6 @@
 # Production environment matrix
 
-Copy the root `.env.example` to a permission-`0600` `.env` file outside Git.
+Copy the root `production.environment.template` to a permission-`0600` `.env` file outside Git.
 Values below are configuration contracts, not production credentials. Generate
 independent random values; do not reuse secrets across rows. “Required” means
 required for the launch topology, even when Compose supplies a fixed internal
