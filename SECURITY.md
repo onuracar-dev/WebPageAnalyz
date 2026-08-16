@@ -6,7 +6,7 @@ Security fixes are applied to the latest revision on the default branch. No olde
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for a suspected vulnerability. Email `onuracar.work@gmail.com` with:
+Please do not open a public issue for a suspected vulnerability. Email `support@usewpa.tech` with:
 
 - the affected commit or version;
 - a concise impact description;

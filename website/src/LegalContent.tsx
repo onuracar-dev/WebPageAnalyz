@@ -246,7 +246,7 @@ function Refund({ config }: { config: PublicLegalConfig }) {
     <h3>Refund requests and mandatory rights</h3>
     <p>Refund or withdrawal eligibility depends on the purchase, service delivery, the merchant-of-record policy and applicable mandatory law. WPA does not promise an absolute “no refunds” rule, does not claim sole authority over merchant-of-record refunds, and does not remove non-waivable consumer rights.</p>
     <h3>How to request help</h3>
-    <p>Use the buyer support portal for payment/refund handling and contact {config.operator?.supportEmail} for product-access or service-delivery evidence. Include the transaction reference but never send complete card details.</p>
+    <p>Use the buyer support portal for payment/refund handling and contact <a href={`mailto:${config.operator?.supportEmail}`}>{config.operator?.supportEmail}</a> for product-access or service-delivery evidence. Include the transaction reference but never send complete card details.</p>
   </>;
 }
 
@@ -297,6 +297,6 @@ export default function LegalContent({ kind }: { kind: LegalKind }) {
     <header className="aux-public__heading"><span className="aux-index">{heading.index}</span><div><span>{heading.eyebrow}</span><h1>{heading.title}</h1><p>{meta}</p></div></header>
     {loading ? <div className="aux-legal__notice" role="status"><FileLock2 /><div><strong>Loading the published legal configuration…</strong><p>Operator identity and document versions come from the server and are never guessed by the browser.</p></div></div>
       : !ready ? <div className="aux-legal__notice aux-legal__notice--blocked" role="alert"><AlertCircle /><div><strong>LEGAL CONFIGURATION UNAVAILABLE</strong><p>{error || 'This deployment did not return a complete operator identity and effective document version.'} No identity or binding version has been invented. Registration and paid checkout must remain unavailable until the server reports legal readiness.</p></div></div>
-      : <article className="aux-legal__copy"><p className="aux-legal__publisher">Published by {operator?.legalName} · {operator?.supportEmail}</p><DocumentBody kind={kind} config={config || {}} /><div className="aux-legal__meta"><span>Document: {document?.id || DOCUMENT_KEY[kind]}</span><span>Version {document?.version} · {readableDate(document?.effectiveAt)}</span></div></article>}
+      : <article className="aux-legal__copy"><p className="aux-legal__publisher">Published by {operator?.legalName} · <a href={`mailto:${operator?.supportEmail}`}>{operator?.supportEmail}</a></p><DocumentBody kind={kind} config={config || {}} /><div className="aux-legal__meta"><span>Document: {document?.id || DOCUMENT_KEY[kind]}</span><span>Version {document?.version} · {readableDate(document?.effectiveAt)}</span></div></article>}
   </section>;
 }

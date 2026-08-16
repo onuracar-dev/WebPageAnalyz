@@ -2,6 +2,10 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { ADMIN_FIXTURE_PERMISSIONS, legalConfig } from './iceberg-fixtures';
 
 const now = '2026-08-14T08:00:00.000Z';
+const productionLegalConfig = {
+  ...legalConfig,
+  operator: { ...legalConfig.operator, supportEmail: 'support@usewpa.tech', supportPhone: undefined },
+};
 
 function ticket(id: string, subject: string, status = 'open') {
   return {
@@ -148,6 +152,30 @@ test.describe('support surfaces against the current API contracts', () => {
     await page.goto('/app/support');
     await expect.poll(() => page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await expect.poll(() => page.locator('.aux-support-page .aux-dark-button').first().evaluate((element) => parseFloat(getComputedStyle(element).transitionDuration))).toBeLessThanOrEqual(0.001);
+  });
+
+  test('public contact, footer, login, and signup legal path expose the production support identity', async ({ page }) => {
+    await page.goto('/contact');
+    await expect(page.getByRole('heading', { name: 'WebPageAnalyz Support' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'support@usewpa.tech' }).first()).toHaveAttribute('href', 'mailto:support@usewpa.tech');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+
+    await page.goto('/');
+    await expect(page.locator('.wpa-footer').getByRole('link', { name: 'Support' })).toHaveAttribute('href', '/contact');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+
+    await page.goto('/login');
+    await expect(page.getByRole('link', { name: 'Need support?' })).toHaveAttribute('href', '/contact');
+
+    await page.route('**/api/v1/legal/config', (route) => json(route, productionLegalConfig));
+    await page.goto('/register');
+    await page.getByRole('link', { name: 'Terms of Service' }).click();
+    await expect(page).toHaveURL(/\/terms$/);
+    await expect(page.getByRole('heading', { name: 'Terms of Service' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'support@usewpa.tech' }).first()).toHaveAttribute('href', 'mailto:support@usewpa.tech');
+
+    await page.goto('/refund');
+    await expect(page.getByRole('link', { name: 'support@usewpa.tech' }).first()).toHaveAttribute('href', 'mailto:support@usewpa.tech');
   });
 
   test('public status, reset, and verification surfaces use their safe auth/status contracts', async ({ page }) => {

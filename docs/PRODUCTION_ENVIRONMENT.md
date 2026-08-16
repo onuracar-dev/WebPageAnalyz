@@ -87,7 +87,7 @@ value rather than asking the operator to type it.
 | `EMAIL_SERVICE_TOKEN` | yes | yes | `<random-64-plus-chars>` | Internal service token; rotate on backend and email-service together | backend, email-service |
 | `RESEND_API_KEY` | yes | yes | `re_...` | Sending-only Resend key; rotate in Resend | email-service only |
 | `EMAIL_FROM` | yes | no | `WebPageAnalyzer <noreply@mail.example.com>` | Must use a Resend-verified domain | backend templates, email-service |
-| `SUPPORT_EMAIL` | yes | limited personal | `support@example.com` | Operator support mailbox | backend, email-service, public contact copy |
+| `SUPPORT_EMAIL` | yes | limited personal | `support@usewpa.tech` | Monitored WebPageAnalyz support mailbox | backend, email-service, public contact copy |
 | `EMAIL_PROVIDER_HOST_ALLOWLIST` | yes | no | `api.resend.com` | Fixed provider boundary | email-service only |
 | `EMAIL_PROVIDER_TIMEOUT_MS` | no | no | `10000` | Bounded provider timeout | email-service only |
 
@@ -175,7 +175,7 @@ emitted through structured container logs.
 | `LEGAL_OPERATOR_TYPE` | no | no | `<actual type or empty>` | Never invent a company type | backend public legal config, website |
 | `LEGAL_COUNTRY` | yes | no | `TR` | Actual operator jurisdiction | backend public legal config, website |
 | `LEGAL_BUSINESS_ADDRESS` | yes | personal/business | `<actual service address>` | Operator-approved factual address | backend public legal config, website |
-| `LEGAL_SUPPORT_EMAIL` | yes | limited personal | `support@example.com` | Actual support/privacy contact | backend public legal config, website |
+| `LEGAL_SUPPORT_EMAIL` | yes | limited personal | `support@usewpa.tech` | Actual support/privacy contact | backend public legal config, website |
 | `LEGAL_SUPPORT_PHONE` | no | personal | empty | Publish only when operator chooses a real number | backend public legal config, website |
 | `LEGAL_EFFECTIVE_DATE` | yes | no | `2026-08-15` | Publication date for v1 documents | backend public legal config, website |
 | `LEGAL_HOSTING_PROVIDER_NAME` | yes | no | `<actual VDS provider>` | Actual production infrastructure processor; changing host requires register review | backend public legal config, website |

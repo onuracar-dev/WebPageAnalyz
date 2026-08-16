@@ -203,7 +203,7 @@ export default function AuthPage({ mode }: { mode: AuthMode }) {
           {register ? <label className="auth-consent">
             <input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} required aria-describedby="registration-privacy-notice" />
             <span>I agree to the <a href="/terms">Terms of Service</a> and <a href="/acceptable-use">Acceptable Use Policy</a>.</span>
-          </label> : <div className="auth-forgot-links"><a className="auth-forgot" href="/forgot-password">Forgot password?</a><a href="mailto:onuracar.work@gmail.com?subject=WPA%20password%20support">Need support?</a></div>}
+          </label> : <div className="auth-forgot-links"><a className="auth-forgot" href="/forgot-password">Forgot password?</a><a href="/contact">Need support?</a></div>}
           {register && <p id="registration-privacy-notice" className="auth-privacy-notice">We use account data to create and secure your workspace. Read the <a href="/privacy">Privacy Notice</a> and <a href="/kvkk">KVKK Aydınlatma Metni</a>. These notices are not consent checkboxes.</p>}
           {register && legalError && <div className="auth-error" role="alert">{legalError}</div>}
           <p className="auth-switch">{register ? 'Already have an account?' : 'New to WPA?'} <PortalButtonLink href={`${register ? '/login' : '/register'}${window.location.search}`}>{register ? 'Sign in' : 'Create account'}</PortalButtonLink></p>

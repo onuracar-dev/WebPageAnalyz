@@ -267,7 +267,7 @@ export default function ProductSite() {
       </section>
     </main>
 
-    <footer className="wpa-footer"><a href="#entry">WebPageAnalyz</a><span>Evidence-led website analysis.</span><nav><a href="/privacy">Privacy</a><a href="/kvkk">KVKK</a><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable use</a><a href="/refund">Refunds</a><a href="/subprocessors">Subprocessors</a></nav></footer>
+    <footer className="wpa-footer"><a href="#entry">WebPageAnalyz</a><span>Evidence-led website analysis.</span><nav><a href="/privacy">Privacy</a><a href="/kvkk">KVKK</a><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable use</a><a href="/refund">Refunds</a><a href="/subprocessors">Subprocessors</a><a href="/contact">Support</a></nav></footer>
 
     {plansOpen && <div className="wpa-plans" role="dialog" aria-modal="true" aria-labelledby="plans-title">
       <button className="wpa-plans__backdrop" aria-label="Close plans" onClick={() => setPlansOpen(false)} />
