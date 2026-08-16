@@ -1,10 +1,11 @@
 require('dotenv').config({ quiet: true });
 const { createApp } = require('./app');
-const { loadConfig } = require('./config');
+const { loadConfig, assertProductionConfig } = require('./config');
 const { logger } = require('./lib/logger');
 
 function startServer() {
     const config = loadConfig();
+    assertProductionConfig(config);
     const app = createApp({ config, logger });
     const server = app.listen(config.port, () => logger.info('WebPage Analyzer API started', {
         port: config.port,
@@ -21,13 +22,13 @@ function startServer() {
         if (shuttingDown) return;
         shuttingDown = true;
         logger[error ? 'error' : 'info']('Server shutdown initiated', { reason, error });
-        app.locals.closeResources?.();
         const forceTimer = setTimeout(() => {
             logger.error('Forced shutdown after grace period');
             process.exit(exitCode || 1);
         }, 10_000);
         forceTimer.unref();
-        server.close(() => {
+        server.close(async () => {
+            await app.locals.closeResources?.();
             clearTimeout(forceTimer);
             process.exitCode = exitCode;
         });

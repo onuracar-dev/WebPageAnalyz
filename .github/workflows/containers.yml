@@ -14,7 +14,31 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [backend, frontend]
+        include:
+          - component: backend
+            image: backend
+            context: backend
+            dockerfile: Dockerfile
+          - component: worker
+            image: worker
+            context: backend
+            dockerfile: Dockerfile.worker
+          - component: maintenance
+            image: maintenance
+            context: backend
+            dockerfile: Dockerfile.maintenance
+          - component: ai
+            image: ai
+            context: backend
+            dockerfile: Dockerfile.ai
+          - component: email
+            image: email
+            context: backend
+            dockerfile: Dockerfile.email
+          - component: website
+            image: website
+            context: website
+            dockerfile: Dockerfile
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
@@ -26,17 +50,19 @@ jobs:
       - uses: docker/metadata-action@v5
         id: meta
         with:
-          images: ghcr.io/onuracar-dev/webpageanalyz-${{ matrix.component }}
+          images: ghcr.io/onuracar-dev/webpageanalyz-${{ matrix.image }}
           tags: |
             type=ref,event=tag
             type=ref,event=branch
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
       - uses: docker/build-push-action@v6
         with:
-          context: ./${{ matrix.component }}
-          file: ./${{ matrix.component }}/Dockerfile
+          context: ./${{ matrix.context }}
+          file: ./${{ matrix.context }}/${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max

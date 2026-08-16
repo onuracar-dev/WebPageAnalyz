@@ -45,3 +45,12 @@ test('parser reports missing Lighthouse scores as unavailable instead of zero', 
     assert.equal(report.scores.performance, null);
     assert.deepEqual(report.devices, {});
 });
+
+test('parser strips credentials and query secrets from normalized finding URLs', async (context) => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'webpage-parser-safe-url-'));
+    context.after(() => fs.rm(directory, { recursive: true, force: true }));
+    const file = path.join(directory, 'wpa.json');
+    await fs.writeFile(file, JSON.stringify({ findings: [{ id: 'secret-url', category: 'seo', pageUrl: 'https://user:password@example.com/report?token=private#hash' }] }));
+    const report = await parseLogs({ wpaPage: file });
+    assert.equal(report.findings[0].pageUrl, 'https://example.com/report');
+});

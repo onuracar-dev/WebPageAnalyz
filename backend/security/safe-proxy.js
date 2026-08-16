@@ -29,7 +29,9 @@ class SafeBrowserProxy {
         connectTimeoutMs = 10_000,
         maxConnections = 100,
         maxResponseBytes = 25 * 1024 * 1024,
-        maxTotalBytes = 250 * 1024 * 1024
+        maxTotalBytes = 250 * 1024 * 1024,
+        allowedOrigins = [],
+        readOnly = true
     } = {}) {
         this.allowedPorts = allowedPorts;
         this.lookup = lookup;
@@ -38,10 +40,13 @@ class SafeBrowserProxy {
         this.maxConnections = maxConnections;
         this.maxResponseBytes = maxResponseBytes;
         this.maxTotalBytes = maxTotalBytes;
+        this.allowedOrigins = new Set(Array.isArray(allowedOrigins) ? allowedOrigins : []);
+        this.readOnly = readOnly;
         this.totalBytes = 0;
         this.activeConnections = 0;
         this.reservedSockets = new Set();
         this.sockets = new Set();
+        this.startPromise = null;
         this.server = http.createServer(this.handleHttp.bind(this));
         this.server.on('connect', this.handleConnect.bind(this));
         this.server.on('clientError', (_error, socket) => socket.destroy());
@@ -51,23 +56,32 @@ class SafeBrowserProxy {
         });
     }
 
-    async start() {
-        await new Promise((resolve, reject) => {
+    start({ bindHost = '127.0.0.1', advertisedHost = bindHost } = {}) {
+        if (this.server.listening && this.url) return Promise.resolve(this.url);
+        if (this.startPromise) return this.startPromise;
+        this.startPromise = new Promise((resolve, reject) => {
             this.server.once('error', reject);
-            this.server.listen(0, '127.0.0.1', () => {
+            this.server.listen(0, bindHost, () => {
                 this.server.off('error', reject);
                 resolve();
             });
-        });
-        const address = this.server.address();
-        this.url = `http://127.0.0.1:${address.port}`;
-        return this.url;
+        }).then(() => {
+            const address = this.server.address();
+            this.url = `http://${advertisedHost}:${address.port}`;
+            return this.url;
+        }).finally(() => { this.startPromise = null; });
+        return this.startPromise;
     }
 
     async stop() {
+        if (this.startPromise) await this.startPromise.catch(() => {});
         for (const socket of this.sockets) socket.destroy();
-        if (!this.server.listening) return;
+        if (!this.server.listening) {
+            this.url = null;
+            return;
+        }
         await new Promise((resolve) => this.server.close(resolve));
+        this.url = null;
     }
 
     reserveConnection(socket) {
@@ -86,6 +100,14 @@ class SafeBrowserProxy {
     }
 
     async handleConnect(request, clientSocket, head) {
+        // CONNECT creates an opaque tunnel. Once established we cannot inspect
+        // the HTTP method inside it, so a read-only proxy must fail closed
+        // instead of claiming to enforce passive-only traffic.
+        if (this.readOnly) {
+            this.logger?.warn('Blocked read-only browser proxy CONNECT request', { code: 'METHOD_NOT_ALLOWED' });
+            clientSocket.end('HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n');
+            return;
+        }
         if (!this.reserveConnection(clientSocket)) return;
 
         try {
@@ -93,6 +115,10 @@ class SafeBrowserProxy {
             if (authority.username || authority.password || authority.pathname !== '/') throw new Error('Invalid authority');
             const hostname = authority.hostname.replace(/^\[|\]$/g, '');
             const port = authority.port ? Number(authority.port) : 443;
+            if (this.allowedOrigins && ![...this.allowedOrigins].some((origin) => {
+                const parsed = new URL(origin);
+                return parsed.hostname === hostname && Number(parsed.port || (parsed.protocol === 'https:' ? 443 : 80)) === port;
+            })) throw Object.assign(new Error('Origin is outside the verified project scope.'), { code: 'ORIGIN_NOT_ALLOWED' });
             const target = await validatePublicHost(hostname, port, {
                 allowedPorts: this.allowedPorts,
                 lookup: this.lookup
@@ -136,6 +162,8 @@ class SafeBrowserProxy {
                 lookup: this.lookup
             });
             const parsed = new URL(target.url);
+            if (this.readOnly && !['GET', 'HEAD', 'OPTIONS'].includes(clientRequest.method || 'GET')) throw Object.assign(new Error('State-changing request blocked.'), { code: 'METHOD_NOT_ALLOWED' });
+            if (this.allowedOrigins && !this.allowedOrigins.has(parsed.origin)) throw Object.assign(new Error('Origin is outside the verified project scope.'), { code: 'ORIGIN_NOT_ALLOWED' });
             const transport = parsed.protocol === 'https:' ? https : http;
             const headers = filteredHeaders(clientRequest.headers);
             headers.host = parsed.host;

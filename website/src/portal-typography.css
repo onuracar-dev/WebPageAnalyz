@@ -1,0 +1,53 @@
+/* Customer typography follows the public product surface: one sans family for
+   reading and actions, with mono reserved for technical evidence and state. */
+.portal-shell--workspace {
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif !important;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+.portal-shell--workspace :is(h1, h2, h3, h4),
+.portal-shell--workspace .brand-mark__word,
+.portal-shell--workspace .portal-context b,
+.portal-shell--workspace .portal-popover > header > b,
+.portal-shell--workspace .portal-avatar,
+.portal-shell--workspace .proof-closure strong,
+.portal-shell--workspace .evidence-margins strong,
+.portal-shell--workspace .credit-telemetry > strong,
+.portal-shell--workspace .billing-settings > strong,
+.portal-shell--workspace .workspace-unavailable h1 {
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif !important;
+}
+
+.portal-shell--workspace .brand-mark__word {
+  font-weight: 600;
+  letter-spacing: -.045em;
+}
+
+.portal-shell--workspace .portal-avatar {
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.portal-shell--workspace .portal-context b,
+.portal-shell--workspace .portal-popover > header > b {
+  font-weight: 600 !important;
+  letter-spacing: -.03em !important;
+}
+
+.portal-shell--workspace .proof-closure strong,
+.portal-shell--workspace .evidence-margins strong,
+.portal-shell--workspace .credit-telemetry > strong,
+.portal-shell--workspace .billing-settings > strong {
+  font-weight: 400;
+  letter-spacing: -.06em;
+}
+
+.portal-shell--workspace :is(button, input, select, textarea) {
+  font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+}
+
+.portal-shell--workspace .portal-primary {
+  font-size: 12px !important;
+  font-weight: 600;
+}

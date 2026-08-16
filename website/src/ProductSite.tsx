@@ -1,406 +1,294 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, FormEvent } from 'react';
-import { animate, createTimeline, stagger } from 'animejs';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  Bot,
-  Check,
-  ChevronRight,
-  CircleAlert,
-  FileJson,
-  Gauge,
-  Globe2,
-  Menu,
-  Network,
-  ScanLine,
-  ShieldCheck,
-  X,
-} from 'lucide-react';
-import BloomScene from './BloomScene';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
+import { ArrowDown, ArrowRight, Menu, X } from 'lucide-react';
+import { gsap } from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
+import { navigate } from './portal/router';
+import { PUBLIC_PLANS } from './planCatalog';
 
-type Category = 'performance' | 'accessibility' | 'seo' | 'bestPractices';
-type ScanStage = 'ready' | 'running' | 'complete';
+gsap.registerPlugin(ScrollTrigger);
 
-const categories: Array<{ id: Category; label: string; short: string }> = [
-  { id: 'performance', label: 'Performance', short: 'PERF' },
-  { id: 'accessibility', label: 'Accessibility', short: 'A11Y' },
-  { id: 'seo', label: 'Search', short: 'SEO' },
-  { id: 'bestPractices', label: 'Best practices', short: 'B/P' },
-];
-
-const evidence: Record<Category, Array<{ title: string; detail: string; impact: 'critical' | 'high' | 'medium'; owner: string }>> = {
-  performance: [
-    { title: 'The LCP image arrives late', detail: 'The browser discovers the main image after layout CSS. Give it the first network window.', impact: 'critical', owner: 'Frontend' },
-    { title: '84 KB of JavaScript can wait', detail: 'This code does not change the first view or the first interaction.', impact: 'high', owner: 'Platform' },
-    { title: 'Two assets expire too early', detail: 'Versioned files return a short cache policy and cost repeat visitors another request.', impact: 'medium', owner: 'Infra' },
-  ],
-  accessibility: [
-    { title: 'Checkout has lost its label', detail: 'The email field looks named, but assistive technology receives no programmatic label.', impact: 'critical', owner: 'Frontend' },
-    { title: 'Muted copy misses AA contrast', detail: 'Secondary control text falls below the required contrast ratio on the dark panel.', impact: 'high', owner: 'Design' },
-    { title: 'The heading order jumps', detail: 'The footer moves from an H2 to an H4 and breaks the document outline.', impact: 'medium', owner: 'Content' },
-  ],
-  seo: [
-    { title: 'The canonical route is missing', detail: 'The page never declares which public URL should own its search signals.', impact: 'high', owner: 'Growth' },
-    { title: 'The search description will clip', detail: 'The current description is longer than the useful result preview.', impact: 'medium', owner: 'Content' },
-    { title: 'Two links have no destination clue', detail: 'Repeated “learn more” labels do not describe where the link goes.', impact: 'medium', owner: 'Content' },
-  ],
-  bestPractices: [
-    { title: 'A widget fails on every load', detail: 'A third-party script throws before the page becomes interactive.', impact: 'critical', owner: 'Platform' },
-    { title: 'One image is visibly stretched', detail: 'The rendered dimensions do not match the source aspect ratio.', impact: 'high', owner: 'Frontend' },
-    { title: 'A browser API is near removal', detail: 'One dependency still calls an interface browsers have marked as deprecated.', impact: 'medium', owner: 'Platform' },
-  ],
+const SAFE_PLAN_FEATURES: Record<string, readonly string[]> = {
+  free: ['5 page credits / month', 'Core browser, SEO/GEO, design and backend-surface evidence', '5 AI suggested-remediation generations / month', '7-day report history'],
+  signal: ['25 page credits / month', 'Lighthouse, Axe, YellowLab + WPA core inspection', 'Runtime, SEO/GEO, responsive UX and backend-surface checks', 'TR/EN JSON + PDF/print reports', '30-day report history'],
+  studio: ['150 page credits / month', 'Everything in Signal + bounded full-site crawl', 'Advanced SEO/GEO, Visual UX and Performance Plus evidence', 'Passive security + 1 source audit / month', '90-day report history'],
+  enterprise: ['500 page credits / month', 'Everything in Studio + 4 source audits / month', 'Read-only Journey Test access', 'Expert Review when assigned to the workspace', '365-day report history'],
 };
 
-const witnesses = [
-  { name: 'Lighthouse', line: 'Speed, search and browser quality.' },
-  { name: 'Axe', line: 'Accessibility failures tied to the markup.' },
-  { name: 'YellowLab', line: 'Page weight and frontend complexity.' },
-];
-
-function makeScores(value: string) {
-  const seed = [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return {
-    performance: 58 + seed % 31,
-    accessibility: 70 + (seed * 3) % 25,
-    seo: 76 + (seed * 5) % 21,
-    bestPractices: 66 + (seed * 7) % 29,
-  };
-}
-
-function AnalyzerMark() {
-  return <span className="wpa-mark" aria-hidden="true"><ScanLine /><i /></span>;
-}
-
-function useReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-  return reduced;
-}
-
-function ProductSite() {
+export default function ProductSite() {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const plansCloseRef = useRef<HTMLButtonElement>(null);
+  const plansTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLElement>(null);
+  const plansReturnRef = useRef<HTMLElement | null>(null);
+  const menuReturnRef = useRef<HTMLElement | null>(null);
+  const menuOverflowRef = useRef<string | null>(null);
+  const lenisRef = useRef<Lenis | null>(null);
+  const [target, setTarget] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [url, setUrl] = useState('https://example.com');
-  const [analyzedUrl, setAnalyzedUrl] = useState('https://example.com');
-  const [activeCategory, setActiveCategory] = useState<Category>('performance');
-  const [scanStage, setScanStage] = useState<ScanStage>('ready');
-  const [error, setError] = useState('');
-  const navRef = useRef<HTMLElement>(null);
-  const scanTimers = useRef<number[]>([]);
-  const reducedMotion = useReducedMotion();
+  const [plansOpen, setPlansOpen] = useState(false);
 
-  const scores = useMemo(() => makeScores(analyzedUrl), [analyzedUrl]);
-  const hostname = useMemo(() => {
-    try { return new URL(analyzedUrl).hostname; } catch { return 'example.com'; }
-  }, [analyzedUrl]);
-  const overallScore = Math.round(Object.values(scores).reduce((sum, score) => sum + score, 0) / 4);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return undefined;
+    const media = gsap.matchMedia();
 
-  useEffect(() => {
-    if (reducedMotion) return undefined;
-    const intro = createTimeline({ defaults: { ease: 'outExpo' } })
-      .add('.site-nav', { opacity: [0, 1], y: [-24, 0], duration: 900 }, 0)
-      .add('.hero-line > span', { y: ['115%', '0%'], rotate: [3, 0], duration: 1200, delay: stagger(110) }, 90)
-      .add('.hero-summary', { opacity: [0, 1], y: [24, 0], duration: 900 }, 380)
-      .add('.bloom-scene', { opacity: [0, 1], scale: [1.035, 1], duration: 1500 }, 180)
-      .add('.command-bar', { opacity: [0, 1], y: [36, 0], duration: 1000 }, 620);
+    media.add('(min-width: 761px) and (prefers-reduced-motion: no-preference)', () => {
+      const context = gsap.context(() => {
+        gsap.timeline({ defaults: { ease: 'power3.out' } })
+          .from('.wpa-nav', { y: -24, autoAlpha: 0, duration: .7 })
+          .from('.wpa-scene--entry .wpa-scene-media', { scale: 1.035, autoAlpha: 0, duration: 1.15 }, '-=.42')
+          .from('.wpa-hero-copy > *', { y: 24, autoAlpha: 0, duration: .72, stagger: .08 }, '-=.76');
 
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting || entry.target.classList.contains('is-visible')) return;
-        entry.target.classList.add('is-visible');
-        const children = entry.target.querySelectorAll(':scope > [data-reveal-item]');
-        animate(children.length ? children : entry.target, {
-          opacity: [0, 1],
-          y: [46, 0],
-          duration: 1050,
-          delay: children.length ? stagger(95) : 0,
-          ease: 'outExpo',
+        gsap.to('.wpa-scene--entry .wpa-scene-media img', {
+          yPercent: 2.8,
+          scale: 1.045,
+          transformOrigin: 'center center',
+          ease: 'none',
+          scrollTrigger: { trigger: '.wpa-scene--entry', start: 'top top', end: 'bottom top', scrub: .8 },
         });
-        observer.unobserve(entry.target);
-      });
-    }, { threshold: 0.14 });
 
-    document.querySelectorAll('[data-reveal]').forEach((element) => observer.observe(element));
-    return () => {
-      intro.revert();
-      observer.disconnect();
-    };
-  }, [reducedMotion]);
+        gsap.timeline({
+          defaults: { ease: 'power3.out' },
+          scrollTrigger: { trigger: '.wpa-scene--scan', start: 'top 72%', toggleActions: 'play none none reverse' },
+        })
+          .from('.wpa-scene--scan .wpa-scene-media', { scale: 1.04, duration: 1.05 })
+          .from('.wpa-scan-copy > *', { x: -26, duration: .64, stagger: .07 }, '-=.68');
 
-  useEffect(() => {
-    const updateScroll = () => {
-      const available = Math.max(document.documentElement.scrollHeight - window.innerHeight, 1);
-      document.documentElement.style.setProperty('--page-progress', `${window.scrollY / available}`);
-    };
-    updateScroll();
-    window.addEventListener('scroll', updateScroll, { passive: true });
-    return () => window.removeEventListener('scroll', updateScroll);
+        gsap.to('.wpa-scene--scan .wpa-scene-media img', {
+          scale: 1.055,
+          ease: 'none',
+          scrollTrigger: { trigger: '.wpa-scene--scan', start: 'top bottom', end: 'bottom top', scrub: 1 },
+        });
+
+        gsap.timeline({
+          defaults: { ease: 'power3.out' },
+          scrollTrigger: { trigger: '.wpa-scene--result', start: 'top 68%', toggleActions: 'play none none reverse' },
+        })
+          .from('.wpa-result-copy > *', { y: 22, duration: .65, stagger: .07 })
+          .from('.wpa-result-panel', { y: 34, duration: .9 }, '-=.58')
+          .from('.wpa-result-panel__rail > *', { x: -18, duration: .55, stagger: .07 }, '-=.52');
+
+        ScrollTrigger.create({
+          trigger: '.wpa-scene--scan',
+          start: 'top 12%',
+          end: 'bottom 12%',
+          toggleClass: { targets: '.wpa-nav', className: 'is-dark' },
+        });
+      }, root);
+      return () => context.revert();
+    });
+
+    media.add('(max-width: 760px), (prefers-reduced-motion: reduce)', () => {
+      gsap.set(root.querySelectorAll('[class*="wpa-"]'), { clearProps: 'transform,opacity,visibility' });
+    });
+
+    return () => media.revert();
   }, []);
 
   useEffect(() => {
-    const nav = navRef.current;
-    if (!nav || reducedMotion) return undefined;
+    const shouldStayNative = window.matchMedia('(max-width: 760px), (prefers-reduced-motion: reduce)').matches;
+    if (shouldStayNative) return undefined;
 
-    const current = { x: 0.22, y: 0.15, pressure: 0 };
-    const target = { ...current };
-    let frame = 0;
+    const lenis = new Lenis({
+      autoRaf: false,
+      smoothWheel: true,
+      wheelMultiplier: .58,
+      lerp: .095,
+      anchors: { duration: 1.05 },
+      overscroll: false,
+    });
+    const updateScroll = () => ScrollTrigger.update();
+    const tick = (time: number) => lenis.raf(time * 1000);
 
-    const render = () => {
-      current.x += (target.x - current.x) * 0.09;
-      current.y += (target.y - current.y) * 0.09;
-      current.pressure += (target.pressure - current.pressure) * 0.08;
-      nav.style.setProperty('--liquid-x', `${current.x * 100}%`);
-      nav.style.setProperty('--liquid-y', `${current.y * 100}%`);
-      nav.style.setProperty('--liquid-tilt-x', `${(0.5 - current.y) * current.pressure * 1.15}deg`);
-      nav.style.setProperty('--liquid-tilt-y', `${(current.x - 0.5) * current.pressure * 1.5}deg`);
-      nav.style.setProperty('--liquid-pressure', current.pressure.toFixed(3));
-      nav.style.setProperty('--liquid-shadow-alpha', (0.2 + current.pressure * 0.08).toFixed(3));
-      nav.style.setProperty('--liquid-highlight-alpha', (0.58 + current.pressure * 0.34).toFixed(3));
-      nav.style.setProperty('--liquid-dark-alpha', (0.02 + current.pressure * 0.07).toFixed(3));
-      nav.style.setProperty('--liquid-flow-opacity', (0.34 + current.pressure * 0.24).toFixed(3));
-      nav.style.setProperty('--liquid-shift', `${(current.pressure - 0.5) * 5}px`);
-      frame = window.requestAnimationFrame(render);
-    };
+    lenisRef.current = lenis;
+    lenis.on('scroll', updateScroll);
+    gsap.ticker.add(tick);
+    gsap.ticker.lagSmoothing(0);
 
-    const move = (event: PointerEvent) => {
-      const bounds = nav.getBoundingClientRect();
-      target.x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
-      target.y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
-      target.pressure = 1;
-    };
-
-    const leave = () => {
-      target.x = 0.5;
-      target.y = 0.3;
-      target.pressure = 0;
-    };
-
-    nav.addEventListener('pointermove', move, { passive: true });
-    nav.addEventListener('pointerleave', leave);
-    frame = window.requestAnimationFrame(render);
     return () => {
-      nav.removeEventListener('pointermove', move);
-      nav.removeEventListener('pointerleave', leave);
-      window.cancelAnimationFrame(frame);
+      gsap.ticker.remove(tick);
+      gsap.ticker.lagSmoothing(500, 33);
+      lenis.off('scroll', updateScroll);
+      lenis.destroy();
+      lenisRef.current = null;
     };
-  }, [reducedMotion]);
+  }, []);
 
   useEffect(() => {
-    if (!menuOpen) return undefined;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') setMenuOpen(false); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
+    if (!plansOpen) return undefined;
+    plansReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : plansTriggerRef.current;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPlansOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = document.querySelector<HTMLElement>('.wpa-plans__panel');
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    lenisRef.current?.stop();
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    requestAnimationFrame(() => plansCloseRef.current?.focus());
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+      lenisRef.current?.start();
+      requestAnimationFrame(() => {
+        if (plansReturnRef.current?.isConnected) plansReturnRef.current.focus();
+        plansReturnRef.current = null;
+      });
+    };
+  }, [plansOpen]);
+
+  useEffect(() => {
+    if (!menuOpen || !window.matchMedia('(max-width: 760px)').matches) return undefined;
+    menuReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : menuButtonRef.current;
+    menuOverflowRef.current = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMenuOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const menu = menuRef.current;
+      if (!menu) return;
+      const focusable = Array.from(menu.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    lenisRef.current?.stop();
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('button,a[href]')?.focus());
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.body.style.overflow = menuOverflowRef.current || '';
+      menuOverflowRef.current = null;
+      lenisRef.current?.start();
+      requestAnimationFrame(() => {
+        if (menuReturnRef.current?.isConnected) menuReturnRef.current.focus();
+        menuReturnRef.current = null;
+      });
+    };
   }, [menuOpen]);
 
-  useEffect(() => () => scanTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
-
-  const runSample = (event: FormEvent) => {
+  function submitTarget(event: FormEvent) {
     event.preventDefault();
-    let parsed: URL;
-    try {
-      parsed = new URL(url);
-      const parsedHostname = parsed.hostname.toLowerCase();
-      if (
-        !['http:', 'https:'].includes(parsed.protocol)
-        || !parsedHostname
-        || parsed.username
-        || parsed.password
-        || parsedHostname === 'localhost'
-        || parsedHostname.endsWith('.localhost')
-      ) throw new Error();
-    } catch {
-      setError('Use a complete public HTTP or HTTPS URL.');
-      return;
-    }
+    const query = target.trim() ? `?target=${encodeURIComponent(target.trim())}` : '';
+    navigate(`/register${query}`);
+  }
 
-    scanTimers.current.forEach((timer) => window.clearTimeout(timer));
-    setError('');
-    setScanStage('running');
-    const stepDelay = reducedMotion ? 180 : 1200;
-    scanTimers.current.push(window.setTimeout(() => {
-      setAnalyzedUrl(parsed.toString());
-      setScanStage('complete');
-      window.dispatchEvent(new CustomEvent('wpa:scroll-to', { detail: '#report' }));
-    }, stepDelay));
-  };
+  return <div className="wpa-site" ref={rootRef}>
+    <a className="wpa-skip" href="#main">Skip to content</a>
+    <header className="wpa-nav">
+      <a className="wpa-wordmark" href="#entry" aria-label="WebPageAnalyz home">WebPageAnalyz</a>
+      <nav ref={menuRef} id="primary-navigation" className={menuOpen ? 'is-open' : ''} aria-label="Primary navigation">
+        <button ref={plansTriggerRef} type="button" onClick={() => { setPlansOpen(true); setMenuOpen(false); }}>Plans</button>
+        <a href="/login" onClick={() => setMenuOpen(false)}>Log in</a>
+        <a className="wpa-nav__start" href="/register" onClick={() => setMenuOpen(false)}>Start</a>
+      </nav>
+      <button ref={menuButtonRef} className="wpa-menu" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={menuOpen} aria-controls="primary-navigation" onClick={() => setMenuOpen((value) => !value)}>{menuOpen ? <X /> : <Menu />}</button>
+    </header>
 
-  const closeMenu = () => setMenuOpen(false);
+    <main id="main">
+      <section className="wpa-scene wpa-scene--entry" id="entry" aria-labelledby="entry-title">
+        <div className="wpa-scene-media" aria-hidden="true">
+          <img src="/assets/scenes/entry-portal.webp" alt="" width="1672" height="941" fetchPriority="high" />
+        </div>
+        <div className="wpa-hero-copy">
+          <span className="wpa-index">01 / ENTER</span>
+          <h1 id="entry-title">Find what&apos;s missing.</h1>
+          <form className="wpa-target-form" onSubmit={submitTarget}>
+            <label className="sr-only" htmlFor="target-url">Website URL</label>
+            <input id="target-url" value={target} onChange={(event) => setTarget(event.target.value)} placeholder="yourwebsite.com" inputMode="url" autoComplete="url" />
+            <button type="submit">Analyze <ArrowRight /></button>
+          </form>
+          <small>Analyze only sites you own or have permission to test. DNS verification unlocks ownership-only engines.</small>
+        </div>
+        <a className="wpa-scroll-cue" href="#scan"><span>Follow the signal</span><ArrowDown /></a>
+      </section>
 
-  return (
-    <div className="wpa-site" data-scan-stage={scanStage}>
-      <a className="skip-link" href="#main">Skip to content</a>
+      <section className="wpa-scene wpa-scene--scan" id="scan" aria-labelledby="scan-title">
+        <div className="wpa-scene-media" aria-hidden="true">
+          <img src="/assets/scenes/options/black-option-02-white-well-2k.webp" alt="" width="2560" height="1440" decoding="async" />
+        </div>
+        <div className="wpa-scan-copy">
+          <span className="wpa-index">02 / EXAMINE</span>
+          <h2 id="scan-title">Every layer,<br />examined.</h2>
+          <p>Automated and heuristic evidence, with incomplete and unavailable coverage kept visible.</p>
+        </div>
+        <a className="wpa-scroll-cue" href="#result"><span>See the priority</span><ArrowDown /></a>
+      </section>
 
-      <header className="site-nav" ref={navRef}>
-        <span className="nav-liquid" aria-hidden="true"><span className="nav-liquid__flow"><i /><i /><i /></span></span>
-        <a className="site-brand" href="#top" aria-label="WebPage Analyzer home"><AnalyzerMark /><span>WPA<sup>®</sup></span></a>
-        <nav id="primary-navigation" className={menuOpen ? 'nav-links nav-links--open' : 'nav-links'} aria-label="Primary navigation">
-          <a href="#method" onClick={closeMenu}>Product</a>
-          <a href="#anatomy" onClick={closeMenu}>Findings</a>
-          <a href="#report" onClick={closeMenu}>Sample report</a>
-          <a href="#deployment" onClick={closeMenu}>Deployment</a>
-        </nav>
-        <a className="nav-cta" href="mailto:onuracar.work@gmail.com?subject=WebPage%20Analyzer%20private%20demo">Book demo <ArrowUpRight /></a>
-        <button className="menu-button" type="button" aria-label={menuOpen ? 'Close navigation' : 'Open navigation'} aria-controls="primary-navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X /> : <Menu />}</button>
-        <i className="nav-progress" aria-hidden="true" />
-      </header>
+      <section className="wpa-scene wpa-scene--result" id="result" aria-labelledby="result-title">
+        <div className="wpa-scene-media wpa-scene-media--result" aria-hidden="true">
+          <img src="/assets/scenes/result-panel.webp" alt="" width="1672" height="941" decoding="async" />
+        </div>
+        <div className="wpa-result-copy">
+          <span className="wpa-index">03 / DECIDE</span>
+          <h2 id="result-title">Know what<br />to fix next.</h2>
+          <a href="/register">Open your workspace <ArrowRight /></a>
+        </div>
+        <article className="wpa-result-panel" aria-label="Sample prioritized finding">
+          <div className="wpa-result-panel__rail"><strong>Priority 01</strong><span>Highest-impact issue</span><a href="/register">View suggested remediation <ArrowRight /></a></div>
+          <div className="wpa-result-panel__finding"><small>Performance Plus / measured</small><h3>Render-blocking JavaScript</h3><p>A measured finding with an automated suggestion to review before making changes.</p></div>
+          <footer><span>/pricing</span><b>High</b><em>96% confidence</em></footer>
+        </article>
+      </section>
+    </main>
 
-      <main id="main">
-        <section className="hero" id="top">
-          <BloomScene reducedMotion={reducedMotion} />
+    <footer className="wpa-footer"><a href="#entry">WebPageAnalyz</a><span>Evidence-led website analysis.</span><nav><a href="/privacy">Privacy</a><a href="/kvkk">KVKK</a><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable use</a><a href="/refund">Refunds</a><a href="/subprocessors">Subprocessors</a></nav></footer>
 
-          <div className="hero-content">
-            <h1 aria-label="Your website left clues">
-              <span className="hero-line"><span>YOUR WEBSITE</span></span>
-              <span className="hero-line hero-line--signal"><span>LEFT CLUES.</span></span>
-            </h1>
-            <div className="hero-bottom">
-              <p className="hero-summary">Lighthouse, Axe and YellowLab findings, ranked in one report.</p>
+    {plansOpen && <div className="wpa-plans" role="dialog" aria-modal="true" aria-labelledby="plans-title">
+      <button className="wpa-plans__backdrop" aria-label="Close plans" onClick={() => setPlansOpen(false)} />
+      <section className="wpa-plans__panel" data-lenis-prevent>
+        <header className="wpa-plans__header">
+          <div><span>WebPageAnalyz</span><h2 id="plans-title">Choose the depth.</h2></div>
+          <button ref={plansCloseRef} aria-label="Close plans" onClick={() => setPlansOpen(false)}><X /></button>
+        </header>
+        <div className="wpa-plans__stage">
+          {PUBLIC_PLANS.map((plan, index) => <article key={plan.id} className={`wpa-plan-aperture wpa-plan-aperture--${plan.id}`}>
+            <div className="wpa-plan-aperture__frame" aria-hidden="true">{plan.id === 'studio' && <i />}</div>
+            <div className="wpa-plan-aperture__content">
+              <small>0{index + 1} / {plan.name}</small>
+              <strong>{plan.id === 'free' ? '$0' : plan.id === 'enterprise' ? `From $${plan.priceUsd}` : `$${plan.priceUsd}`}<span>{plan.id === 'free' ? ' bounded access' : plan.id === 'enterprise' ? ' / month · invitation' : '/ month'}</span></strong>
+              <p>{plan.description}</p>
+              <ul>{(SAFE_PLAN_FEATURES[plan.id] || plan.features).map((feature) => <li key={feature}>{feature}</li>)}</ul>
+              <a href={plan.id === 'enterprise' ? '/contact?plan=enterprise' : plan.id === 'free' ? '/register' : `/register?plan=${plan.id}`}>{plan.id === 'enterprise' ? 'Contact sales' : plan.id === 'free' ? 'Start Free' : `Choose ${plan.name}`}<ArrowRight /></a>
             </div>
-            <form className="command-bar" onSubmit={runSample} noValidate>
-              <Globe2 aria-hidden="true" />
-              <label htmlFor="sample-url" className="sr-only">Website URL for the sample report</label>
-              <input id="sample-url" type="url" inputMode="url" autoComplete="url" spellCheck={false} required value={url} onChange={(event) => { setUrl(event.target.value); if (error) setError(''); }} aria-describedby={error ? 'url-error' : undefined} aria-invalid={Boolean(error)} />
-              <button type="submit" disabled={scanStage === 'running'}>{scanStage === 'running' ? 'Preparing report' : scanStage === 'complete' ? 'Run again' : 'View sample'} <ArrowRight /></button>
-              {error && <p id="url-error" className="command-error" role="alert"><CircleAlert /> {error}</p>}
-            </form>
-          </div>
-        </section>
-
-        <section className="witness-section" id="method">
-          <div className="section-shell witness-intro" data-reveal>
-            <h2 data-reveal-item>Three audits.<br /><em>One fix list.</em></h2>
-            <p data-reveal-item>Each finding keeps its source and the affected element.</p>
-          </div>
-          <div className="witness-list section-shell" data-reveal>
-            {witnesses.map((engine) => (
-              <article key={engine.name} data-reveal-item>
-                <h3>{engine.name}</h3>
-                <p>{engine.line}</p>
-                <ArrowUpRight />
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="anatomy-section" id="anatomy">
-          <div className="section-shell anatomy-layout">
-            <div className="anatomy-copy" data-reveal>
-              <h2 data-reveal-item>The problem,<br /><em>pinned to the page.</em></h2>
-              <p data-reveal-item>Open a finding and see the element, impact and owner.</p>
-            </div>
-
-            <div className="inspection-stage" aria-label="A selected button inspected with three attached findings">
-              <svg className="inspection-paths" viewBox="0 0 760 720" aria-hidden="true">
-                <path d="M92 174 C194 174 184 258 302 282" />
-                <path d="M671 126 C576 174 612 257 500 302" />
-                <path d="M676 596 C573 568 591 482 491 444" />
-              </svg>
-              <div className="inspection-lens">
-                <span>SELECTED ELEMENT</span>
-                <strong>&lt;button&gt;</strong>
-                <div className="inspection-element">START NOW</div>
-                <p>Accessible name <b>missing</b></p>
-              </div>
-              <span className="inspection-pin inspection-pin--one"><i>01</i><b>Axe</b><small>Label missing</small></span>
-              <span className="inspection-pin inspection-pin--two"><i>02</i><b>Lighthouse</b><small>Late dependency</small></span>
-              <span className="inspection-pin inspection-pin--three"><i>03</i><b>Owner</b><small>Frontend</small></span>
-            </div>
-          </div>
-        </section>
-
-        <section className="report-section" id="report">
-          <div className="section-shell report-intro" data-reveal>
-            <h2 data-reveal-item>A ranked list.<br /><em>Evidence attached.</em></h2>
-          </div>
-
-          <div className="report-shell section-shell" data-reveal>
-            <div className="report-chrome" data-reveal-item>
-              <span><AnalyzerMark /> WPA / CASE 001</span><b>{hostname}</b><span>EVIDENCE LOCKED</span>
-            </div>
-            <div className="report-overview" data-reveal-item>
-              <div className="score-orbit" style={{ '--score': `${overallScore * 3.6}deg` } as CSSProperties}>
-                <div><strong>{overallScore}</strong><span>OVERALL<br />SIGNAL</span></div>
-              </div>
-              <div className="report-title"><span>AUDIT SUBJECT</span><h3>{hostname}</h3><p>12 findings collected across three independent engines.</p></div>
-              <div className="report-sparkline" aria-hidden="true"><span>REQUEST LOAD</span><svg viewBox="0 0 280 64"><path d="M0 52 L24 49 L40 51 L58 30 L78 34 L98 18 L119 28 L140 25 L160 38 L180 9 L199 19 L219 13 L242 27 L260 18 L280 21" /></svg><b>2.4 MB</b></div>
-            </div>
-
-            <div className="report-score-nav" data-reveal-item>
-              {categories.map((category) => (
-                <button key={category.id} type="button" className={activeCategory === category.id ? 'active' : ''} onClick={() => setActiveCategory(category.id)} aria-pressed={activeCategory === category.id}>
-                  <span>{category.short}</span><strong>{scores[category.id]}</strong><i style={{ '--value': `${scores[category.id]}%` } as CSSProperties} />
-                </button>
-              ))}
-            </div>
-
-            <div className="report-evidence" data-reveal-item>
-              <div className="finding-column" role="region" aria-live="polite" aria-label={`${categories.find((category) => category.id === activeCategory)?.label} sample findings`}>
-                <div className="finding-head"><span>PRIORITY</span><span>FINDING / EVIDENCE</span><span>OWNER</span></div>
-                {evidence[activeCategory].map((issue, index) => (
-                  <article key={issue.title}>
-                    <span className={`priority priority--${issue.impact}`}>{String(index + 1).padStart(2, '0')}<i />{issue.impact}</span>
-                    <div><h4>{issue.title}</h4><p>{issue.detail}</p></div>
-                    <span className="owner">{issue.owner}<ChevronRight /></span>
-                  </article>
-                ))}
-              </div>
-              <aside className="next-move">
-                <span>NEXT MOVE / 01</span>
-                <Gauge />
-                <h3>{evidence[activeCategory][0].title}</h3>
-                <p>{evidence[activeCategory][0].detail}</p>
-                <div><Bot /><span>AI guidance stays off until a person asks for it.</span></div>
-              </aside>
-            </div>
-
-            <div className="report-actions" data-reveal-item><span><Check /> SOURCE VISIBLE</span><span><Check /> ELEMENT ATTACHED</span><span><Check /> OWNER ASSIGNED</span><button type="button"><FileJson /> EXPORT CASE FILE</button></div>
-          </div>
-        </section>
-
-        <section className="boundary-section">
-          <div className="section-shell boundary-intro" data-reveal>
-            <h2 data-reveal-item>Public targets only.</h2>
-            <p data-reveal-item>Private IPs, unsafe redirects and mixed DNS answers are blocked before a browser opens.</p>
-          </div>
-          <div className="boundary-rail section-shell" data-reveal>
-            <div data-reveal-item><span>01</span><Globe2 /><b>Submitted URL</b><small>Credentials rejected</small></div><ArrowRight data-reveal-item />
-            <div data-reveal-item><span>02</span><Network /><b>DNS + IP policy</b><small>Public targets only</small></div><ArrowRight data-reveal-item />
-            <div className="boundary-focus" data-reveal-item><span>03</span><ShieldCheck /><b>Safe proxy</b><small>Redirects checked again</small></div><ArrowRight data-reveal-item />
-            <div data-reveal-item><span>04</span><Gauge /><b>Bounded browser</b><small>Time, bytes, concurrency</small></div>
-          </div>
-        </section>
-
-        <section className="deployment-section" id="deployment">
-          <div className="section-shell deployment-layout">
-            <div className="deployment-content" data-reveal>
-              <h2 data-reveal-item><span>Run it where</span><span>your data lives.</span></h2>
-              <p data-reveal-item>Deploy the analyzer inside your environment. URLs and report history stay there.</p>
-              <div className="deployment-actions" data-reveal-item>
-                <a href="mailto:onuracar.work@gmail.com?subject=WebPage%20Analyzer%20private%20demo">Book a demo <ArrowUpRight /></a>
-                <a href="#report">View sample report</a>
-              </div>
-            </div>
-            <div className="report-lockup" aria-label="Twelve findings ranked from three audit sources">
-              <span>ONE ORDERED REPORT</span>
-              <div><strong>12</strong><p>findings ranked<br />by impact</p></div>
-              <ul>{witnesses.map((engine) => <li key={engine.name}>{engine.name}</li>)}</ul>
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <footer className="site-footer section-shell">
-        <a className="site-brand" href="#top"><AnalyzerMark /><span>WPA<sup>®</sup></span></a>
-        <div><a href="https://onuracar.dev" target="_blank" rel="noreferrer">Onur Acar <ArrowUpRight /></a><span>© 2026</span></div>
-      </footer>
-    </div>
-  );
+          </article>)}
+        </div>
+      </section>
+    </div>}
+  </div>;
 }
-
-export default ProductSite;

@@ -30,4 +30,12 @@ yarn-error.log*
 /frontend/dist/
 /backend/dist/
 /website/dist/
+/website/test-results/
+/website/playwright-report/
+/website/artifacts/
+/website/current-*.png
+/website/finale-*.png
+/website/pricing-root-fifth.svg.png
+/backend/test-results/
+/WebPageAnalyz-production-*.zip
 coverage/

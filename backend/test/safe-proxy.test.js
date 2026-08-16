@@ -4,6 +4,12 @@ const http = require('node:http');
 const net = require('node:net');
 const { SafeBrowserProxy } = require('../security/safe-proxy');
 
+test('safe proxy defaults to read-only and no allowed origins', () => {
+    const proxy = new SafeBrowserProxy();
+    assert.equal(proxy.readOnly, true);
+    assert.deepEqual([...proxy.allowedOrigins], []);
+});
+
 test('safe proxy rejects HTTP requests to loopback without connecting to the target', async () => {
     const proxy = new SafeBrowserProxy({ logger: { warn() {} } });
     const proxyUrl = new URL(await proxy.start());
@@ -28,7 +34,7 @@ test('safe proxy rejects HTTP requests to loopback without connecting to the tar
 });
 
 test('safe proxy rejects HTTPS CONNECT tunnels to private destinations', async () => {
-    const proxy = new SafeBrowserProxy({ logger: { warn() {} } });
+    const proxy = new SafeBrowserProxy({ readOnly: false, allowedOrigins: ['https://example.com'], logger: { warn() {} } });
     const proxyUrl = new URL(await proxy.start());
     try {
         const response = await new Promise((resolve, reject) => {
@@ -42,6 +48,26 @@ test('safe proxy rejects HTTPS CONNECT tunnels to private destinations', async (
             socket.once('error', reject);
         });
         assert.match(response, /^HTTP\/1\.1 403 Forbidden/);
+    } finally {
+        await proxy.stop();
+    }
+});
+
+test('read-only safe proxy rejects opaque HTTPS CONNECT tunnels', async () => {
+    const proxy = new SafeBrowserProxy({ readOnly: true, logger: { warn() {} } });
+    const proxyUrl = new URL(await proxy.start());
+    try {
+        const response = await new Promise((resolve, reject) => {
+            const socket = net.connect(Number(proxyUrl.port), proxyUrl.hostname, () => {
+                socket.write('CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n');
+            });
+            let data = '';
+            socket.setEncoding('utf8');
+            socket.on('data', (chunk) => { data += chunk; });
+            socket.on('end', () => resolve(data));
+            socket.once('error', reject);
+        });
+        assert.match(response, /^HTTP\/1\.1 405 Method Not Allowed/);
     } finally {
         await proxy.stop();
     }

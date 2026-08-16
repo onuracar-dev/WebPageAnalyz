@@ -1,0 +1,26 @@
+FROM node:24.19.0-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+
+LABEL org.opencontainers.image.title="WebPageAnalyz email service" \
+      org.opencontainers.image.description="Isolated Resend transactional-email boundary" \
+      org.opencontainers.image.source="https://github.com/onuracar-dev/WebPageAnalyz"
+
+ENV NODE_ENV=production \
+    EXECUTION_ROLE=email \
+    EMAIL_SERVICE_HOST=0.0.0.0 \
+    EMAIL_SERVICE_PORT=5020
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates dumb-init \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --chown=node:node email ./email
+COPY --chown=node:node lib/errors.js lib/logger.js ./lib/
+COPY --chown=node:node scripts/email-service.js ./scripts/email-service.js
+
+USER node
+EXPOSE 5020
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://127.0.0.1:'+(process.env.EMAIL_SERVICE_PORT||5020)+'/healthz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "scripts/email-service.js"]

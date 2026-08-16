@@ -20,7 +20,7 @@ are never inferred or executed without the owner's explicit action.
 
 | Package | Scope | Status |
 | --- | --- | --- |
-| AUTHZ | Admin bootstrap, workspace RBAC, privileged admin operations, legacy API auth | IN_PROGRESS |
+| AUTHZ | Admin bootstrap, workspace RBAC, privileged admin operations, legacy API auth | REVIEW |
 | BILLING | Free/trial model, Stripe lifecycle, catalog consistency | IN_PROGRESS |
 | DEPLOY | Cloudflare SPA/API routing, live headers, container topology | IN_PROGRESS |
 | LEGAL | Consent ledger, legal/feature release gates, customer data controls | IN_PROGRESS |
@@ -37,12 +37,12 @@ are never inferred or executed without the owner's explicit action.
 | ID | Requirement | Acceptance evidence | Status |
 | --- | --- | --- | --- |
 | P0-01 | Live SPA routes, API routing, and security headers work on the actual deployment path | Cloudflare config tests; route/header smoke; live verification after owner-approved deploy | PENDING |
-| P0-02 | Public signup cannot claim the first super-admin | Negative auth tests; one-time bootstrap test; verified-email and re-auth invariants | IN_PROGRESS |
+| P0-02 | Public signup cannot claim the first super-admin | Negative auth tests; one-time bootstrap test; verified-email and re-auth invariants | REVIEW |
 | P0-03 | A paid Signal plan is never granted without a valid paid/trial state | Plan-state unit/integration tests; new-account and cancellation tests | PENDING |
 | P0-04 | Stripe lifecycle is fail-closed and duplicate checkout-safe | Test-mode lifecycle suite; idempotency/customer/subscription reuse tests | PENDING |
-| P0-05 | Workspace RBAC protects every customer mutation | Route-policy matrix and owner/admin/analyst/viewer positive/negative tests | IN_PROGRESS |
-| P0-06 | Only super-admin can mutate plans and global entitlements, with audit evidence | Route/service tests and immutable before/after audit assertions | IN_PROGRESS |
-| P0-07 | Legacy analysis/AI routes are production-disabled or tenant-authenticated | Production config and endpoint denial tests; scoped-key tests when enabled | IN_PROGRESS |
+| P0-05 | Workspace RBAC protects every customer mutation | Route-policy matrix and owner/admin/analyst/viewer positive/negative tests | REVIEW |
+| P0-06 | Only super-admin can mutate plans and global entitlements, with audit evidence | Route/service tests and immutable before/after audit assertions | REVIEW |
+| P0-07 | Legacy analysis/AI routes are production-disabled or tenant-authenticated | Production config and endpoint denial tests; scoped-key tests when enabled | REVIEW |
 | P0-08 | Untrusted browser execution is separated from API secrets and sandboxed | Container topology tests, capability/secret/egress assertions, hostile-page smoke | PENDING |
 | P0-09 | Registration/checkout cannot accept placeholder policies | Consent version/hash storage tests and legal-release gate tests | PENDING |
 | P0-10 | No paid plan advertises unavailable capabilities as production-ready | Entitlement-to-code/UI acceptance matrix and marketing snapshot checks | PENDING |
@@ -61,7 +61,7 @@ are never inferred or executed without the owner's explicit action.
 | P1-08 | Public report links expire, revoke, audit access, and expose a safe DTO | Token lifecycle and data-minimization tests | PENDING |
 | P1-09 | Target ownership expires and is revalidated | TTL, domain-transfer, and revocation tests | PENDING |
 | P1-10 | External analyzers receive only consented and redacted data | Provider policy, query-redaction, opt-in, and audit tests | PENDING |
-| P1-11 | Production dependencies have no unaccepted critical/high findings | Fresh registry audit and documented reachability/exception gate | PENDING |
+| P1-11 | Production dependencies have no unaccepted critical/high findings | Fresh registry audit and documented reachability/exception gate | REVIEW |
 | P1-12 | Structured logs recursively redact URLs, tokens, and sensitive context | Nested-object, URL-query, and error-context tests | PENDING |
 | P1-13 | Worker crashes cannot strand scans or credits | Lease, heartbeat, reclaim, retry, and settlement tests | PENDING |
 | P1-14 | Large scans fan out into resumable bounded page jobs | Page-job retry, cancellation, aggregate-progress, and deploy-restart tests | PENDING |
@@ -116,11 +116,36 @@ are never inferred or executed without the owner's explicit action.
 | P2-23 | Marketing sample is unmistakably synthetic and never calls live analysis | Network assertion, adjacent disclosure, and snapshot tests | PENDING |
 | P2-24 | Pricing/support/legal footer communicates limits and trust paths | Content contract and responsive/accessibility snapshots | PENDING |
 | P2-25 | SEO metadata, schema, robots, sitemap, and route indexing are correct | Built-asset and crawler smoke tests | PENDING |
-| P2-26 | Trademark symbols are legally confirmed or removed | Owner/legal confirmation or repository removal evidence | PENDING |
+| P2-26 | Trademark symbols are legally confirmed or removed | Owner/legal confirmation or repository removal evidence | PASS |
 | P2-27 | Funnel telemetry is privacy-aware and the product dogfoods its audits | Consent/no-tracking contract and CI self-audit budget | PENDING |
 | P2-28 | Release matrix covers AT, zoom, mobile, reduced motion, exports, and load | Signed acceptance report with fresh runtime evidence | PENDING |
 
 ## Integrated completion gate
+
+### Current integrated evidence
+
+- `AUTHZ` (2026-08-07): main checkout `npm run check`, `npm run lint`, and
+  `npm test` passed with 78/78 tests after integration. Public-signup bootstrap
+  denial, one-time pre-provisioned bootstrap, verified-email/2FA/explicit
+  re-authentication, workspace role matrix, super-admin-only plan mutation with
+  audit rollback, CSRF/API-key separation, and production-disabled legacy routes
+  have executable coverage. Rows remain `REVIEW` until real PostgreSQL migration,
+  Better Auth session/TOTP, and shared multi-instance throttling tests pass.
+- `P2-26` (2026-08-08): the customer-facing website source has zero textual
+  registered-trademark symbols or trademark-registration claims after removal of
+  the unsupported `WPA®` mark. Independent read-only review
+  `019fdde3-988b-7bf1-a06b-c6ff0907fd36` confirmed repository-removal evidence;
+  a fresh root `website` run passed `npm run typecheck` and `npm run build`, and
+  the bounded `src`/`public` text scan returned `textual_matches=0`.
+- `P1-11` (2026-08-08, `REVIEW`): fresh registry audits for every checked-in Node package
+  (`backend`, `frontend`, and `website`) returned zero total, high, or critical
+  vulnerabilities across dependency graphs of 388, 325, and 198 packages.
+  The vulnerable transitive `nanoid@3.3.16` was replaced by an exact
+  `3.3.17` override in both browser applications; fresh `frontend` check and
+  `website` typecheck/build passed after the lockfile update. This proves the
+  Node lockfile surface only. Production dependency reachability/exception
+  documentation and digest-pinned container base/OS package scanning remain
+  required before this row can return to `PASS`.
 
 The goal is not complete until all of the following are true:
 

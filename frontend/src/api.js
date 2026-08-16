@@ -9,6 +9,7 @@ export async function apiRequest(path, { timeoutMs = 30_000, signal, ...options 
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
+      credentials: options.credentials || 'include',
       signal: controller.signal,
       headers: {
         Accept: 'application/json',

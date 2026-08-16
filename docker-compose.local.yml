@@ -1,0 +1,52 @@
+# Explicit local-development override for the bundled plaintext Postgres.
+# This file changes NODE_ENV, PostgreSQL TLS checks and the broad read/request
+# budget only for a disposable local QA stack. Endpoint-specific sign-in,
+# analysis, AI, support, redeem and admin-mutation limits remain unchanged.
+# Production deployments must use docker-compose.yml alone with TLS-enabled
+# PostgreSQL and the secure values from .env.example.
+services:
+  db-migrate:
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: "postgresql://wpa_migrator:${POSTGRES_MIGRATOR_PASSWORD:?Set POSTGRES_MIGRATOR_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${MIGRATION_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${MIGRATION_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${MIGRATION_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=disable"
+      QUEUE_DATABASE_URL: "postgresql://wpa_queue:${POSTGRES_QUEUE_PASSWORD:?Set POSTGRES_QUEUE_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${MIGRATION_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${MIGRATION_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${MIGRATION_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=disable"
+      MIGRATION_REQUIRE_TLS: "false"
+      MIGRATION_DATABASE_SSLMODE: disable
+
+  backend:
+    environment:
+      NODE_ENV: development
+      # After one password + TOTP step-up, keep admin controls unlocked only
+      # for this Better Auth session. Production explicitly rejects this mode.
+      ADMIN_REAUTH_SESSION_LIFETIME: "true"
+      # Browser acceptance repeatedly reloads nine customer surfaces. Keep the
+      # production default intact while preventing local QA from locking out
+      # the human tester sharing this loopback connection.
+      RATE_LIMIT_MAX: "2000"
+      DATABASE_URL: "postgresql://wpa_runtime:${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=disable"
+      DATABASE_SSLMODE: disable
+
+  email-service:
+    environment:
+      # Local Compose intentionally uses http://localhost. Production keeps
+      # the email service's HTTPS APP_URL requirement from the base file.
+      NODE_ENV: development
+
+  ai-service:
+    environment:
+      # Some disposable/free models do not expose native json_schema output.
+      # Local QA may use the prompt-schema compatibility mode; production
+      # rejects that mode and continues to require native structured output.
+      NODE_ENV: development
+
+  analysis-worker:
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: "postgresql://wpa_worker:${POSTGRES_WORKER_PASSWORD:?Set POSTGRES_WORKER_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=disable"
+      DATABASE_SSLMODE: disable
+
+  maintenance-worker:
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: "postgresql://wpa_maintenance:${POSTGRES_MAINTENANCE_PASSWORD:?Set POSTGRES_MAINTENANCE_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=disable"
+      DATABASE_SSLMODE: disable

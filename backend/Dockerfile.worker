@@ -1,0 +1,41 @@
+FROM node:24.19.0-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
+
+LABEL org.opencontainers.image.title="WebPageAnalyz analysis worker" \
+      org.opencontainers.image.description="Least-privilege browser, source and PDF execution boundary" \
+      org.opencontainers.image.source="https://github.com/onuracar-dev/WebPageAnalyz"
+
+ARG OSV_SCANNER_VERSION=2.3.8
+ARG OSV_SCANNER_SHA256=bc98e15319ed0d515e3f9235287ba53cdc5535d576d24fd573978ecfe9ab92dc
+
+ENV NODE_ENV=production \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    EXECUTION_ROLE=worker \
+    WORKER_SANDBOX_REQUIRED=true \
+    CHROME_PATH=/usr/bin/chromium \
+    ARTIFACT_DIR=/app/worker-artifacts
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates chromium chromium-sandbox curl dumb-init fonts-liberation \
+    && curl --fail --silent --show-error --location --retry 3 --retry-connrefused --retry-delay 2 \
+        -o /tmp/osv-scanner "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64" \
+    && echo "${OSV_SCANNER_SHA256}  /tmp/osv-scanner" | sha256sum -c - \
+    && install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner \
+    && rm -f /tmp/osv-scanner \
+    && test -u /usr/lib/chromium/chrome-sandbox \
+    && apt-get purge -y --auto-remove curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts \
+    && npm cache clean --force
+
+COPY --chown=node:node . .
+RUN mkdir -p /app/logs/source-inputs /app/worker-artifacts /app/worker-results \
+    && chown -R node:node /app/logs /app/worker-artifacts /app/worker-results
+
+USER node
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD node scripts/worker-healthcheck.js
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "scripts/analysis-worker.js"]

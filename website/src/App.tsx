@@ -1,64 +1,48 @@
-import { useEffect } from 'react';
-import Lenis from 'lenis';
+import { lazy, Suspense, type ReactNode } from 'react';
 import ProductSite from './ProductSite';
+import { useRoutePath } from './portal/router';
+import AuxiliaryPage from './AuxiliaryPages';
+
+const AdminDashboard = lazy(() => import('./portal/AdminDashboard'));
+const AuthPage = lazy(() => import('./portal/AuthPage'));
+const UserDashboard = lazy(() => import('./portal/UserDashboard'));
+const SupportCenter = lazy(() => import('./portal/SupportCenter'));
+
+function RouteLoader({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<main className="route-loader"><i /><span>Loading WPA...</span></main>}>{children}</Suspense>;
+}
+
+function sharedTokenFromPath(path: string) {
+  const prefix = path.startsWith('/shared-reports/') ? '/shared-reports/' : path.startsWith('/share/') ? '/share/' : '';
+  if (!prefix) return null;
+  const raw = path.slice(prefix.length);
+  if (raw.includes('/')) return '';
+  try { return decodeURIComponent(raw); } catch { return ''; }
+}
 
 function App() {
-  useEffect(() => {
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let lenis: Lenis | null = null;
-    let frame = 0;
+  const path = useRoutePath();
 
-    const stop = () => {
-      window.cancelAnimationFrame(frame);
-      frame = 0;
-      lenis?.destroy();
-      lenis = null;
-    };
-
-    const sync = () => {
-      stop();
-      if (reducedMotion.matches) return;
-
-      const instance = new Lenis({
-        autoRaf: false,
-        anchors: { offset: -92, duration: 1.05 },
-        duration: 1.12,
-        easing: (value) => Math.min(1, 1.001 - 2 ** (-10 * value)),
-        smoothWheel: true,
-        syncTouch: false,
-        wheelMultiplier: 0.92,
-      });
-
-      lenis = instance;
-      const update = (time: number) => {
-        if (lenis !== instance) return;
-        instance.raf(time);
-        frame = window.requestAnimationFrame(update);
-      };
-      frame = window.requestAnimationFrame(update);
-    };
-
-    const scrollToTarget = (event: Event) => {
-      const target = (event as CustomEvent<string>).detail;
-      if (!target) return;
-      if (lenis) {
-        lenis.scrollTo(target, { offset: -92, duration: 1.05 });
-        return;
-      }
-      document.querySelector(target)?.scrollIntoView({ block: 'start' });
-    };
-
-    sync();
-    reducedMotion.addEventListener('change', sync);
-    window.addEventListener('wpa:scroll-to', scrollToTarget);
-    return () => {
-      reducedMotion.removeEventListener('change', sync);
-      window.removeEventListener('wpa:scroll-to', scrollToTarget);
-      stop();
-    };
-  }, []);
-
-  return <ProductSite />;
+  if (path === '/login') return <RouteLoader><AuthPage mode="login" /></RouteLoader>;
+  if (path === '/register') return <RouteLoader><AuthPage mode="register" /></RouteLoader>;
+  if (path === '/admin' || path.startsWith('/admin/')) return <RouteLoader><AdminDashboard /></RouteLoader>;
+  if (path === '/app/support') return <RouteLoader><SupportCenter /></RouteLoader>;
+  if (path === '/app' || path.startsWith('/app/')) return <RouteLoader><UserDashboard /></RouteLoader>;
+  if (path === '/faq') return <AuxiliaryPage kind="faq" />;
+  if (path === '/status') return <AuxiliaryPage kind="status" />;
+  if (path === '/contact') return <AuxiliaryPage kind="contact" />;
+  if (path === '/forgot-password') return <AuxiliaryPage kind="forgot-password" />;
+  if (path === '/verify-email') return <AuxiliaryPage kind="verify-email" />;
+  if (path === '/privacy') return <AuxiliaryPage kind="privacy" />;
+  if (path === '/terms') return <AuxiliaryPage kind="terms" />;
+  if (path === '/kvkk') return <AuxiliaryPage kind="kvkk" />;
+  if (path === '/acceptable-use') return <AuxiliaryPage kind="acceptable-use" />;
+  if (path === '/refund') return <AuxiliaryPage kind="refund" />;
+  if (path === '/subprocessors') return <AuxiliaryPage kind="subprocessors" />;
+  if (path.startsWith('/shared-reports/') || path.startsWith('/share/')) return <AuxiliaryPage kind="shared-report" token={sharedTokenFromPath(path) || ''} />;
+  if (path === '/404') return <AuxiliaryPage kind="404" path={path} />;
+  if (path === '/') return <ProductSite />;
+  return <AuxiliaryPage kind="404" path={path} />;
 }
 
 export default App;

@@ -6,6 +6,12 @@ const { chromeExecutable, chromeFlags } = require('./browser-options');
 
 async function killChrome(chrome) {
     if (!chrome) return;
+    if (typeof chrome.destroyTmp === 'function') {
+        const destroyTmp = chrome.destroyTmp;
+        chrome.destroyTmp = () => {
+            try { destroyTmp.call(chrome); } catch { /* chrome-launcher may race a locked Windows profile */ }
+        };
+    }
     try {
         await chrome.kill();
     } catch {

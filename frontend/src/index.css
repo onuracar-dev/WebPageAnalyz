@@ -609,6 +609,36 @@ footer a {
   text-underline-offset: 0.15em;
 }
 
+.workspace-panel { margin-bottom: 1.25rem; padding: 1.5rem; }
+.workspace-heading, .workspace-form, .workspace-projects article { display: flex; align-items: center; gap: .75rem; }
+.workspace-heading { justify-content: space-between; }
+.workspace-heading h2 { margin: .35rem 0 0; }
+.workspace-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; margin: 1rem 0; }
+.workspace-stats span { padding: .8rem; border: 1px solid var(--border); border-radius: 12px; }
+.workspace-stats b, .workspace-stats small, .workspace-projects small { display: block; }
+.workspace-stats small, .workspace-projects small { color: var(--text-secondary); margin-top: .2rem; }
+.workspace-form input { min-width: 0; flex: 1; }
+.workspace-message { color: var(--text-secondary); }
+.workspace-projects { display: grid; gap: .5rem; margin-top: 1rem; }
+.workspace-projects article { padding: .7rem; border-top: 1px solid var(--border); }
+.workspace-projects article div { flex: 1; min-width: 0; }
+.admin-panel { margin-bottom: 1.25rem; padding: 1rem 1.5rem; }
+.admin-panel summary { align-items: center; cursor: pointer; display: flex; gap: .5rem; font-weight: 700; }
+.admin-auth, .admin-tasks article { align-items: center; display: flex; gap: .75rem; margin-top: 1rem; }
+.admin-auth input { flex: 1; }
+.admin-tasks article { border-top: 1px solid var(--border); padding-top: .75rem; }
+.admin-tasks span { flex: 1; }
+.admin-tasks small { color: var(--text-secondary); display: block; }
+.auth-panel { margin-bottom: 1.25rem; padding: 1rem 1.5rem; }
+.auth-panel summary { cursor: pointer; font-weight: 700; margin-bottom: 1rem; }
+.auth-form { display: grid; grid-template-columns: 1fr 1.3fr 1fr auto auto; gap: .6rem; }
+
+@media (max-width: 760px) {
+  .workspace-stats { grid-template-columns: repeat(2, 1fr); }
+  .workspace-heading, .workspace-form, .workspace-projects article, .admin-auth, .admin-tasks article { align-items: stretch; flex-direction: column; }
+  .auth-form { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 760px) {
   .container {
     padding: 1rem;

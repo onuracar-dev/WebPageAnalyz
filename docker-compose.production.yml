@@ -1,0 +1,55 @@
+services:
+  postgres:
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/run/postgresql-tls/server.crt
+      - -c
+      - ssl_key_file=/run/postgresql-tls/server.key
+      - -c
+      - ssl_ca_file=/run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/server.crt:/run/postgresql-tls/server.crt:ro
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/server.key:/run/postgresql-tls/server.key:ro
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  db-bootstrap:
+    environment:
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  db-migrate:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/postgresql-tls/ca.crt
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  db-grants:
+    environment:
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  backend:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  analysis-worker:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro
+
+  maintenance-worker:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/postgresql-tls/ca.crt
+    volumes:
+      - ${POSTGRES_TLS_DIR:?Set POSTGRES_TLS_DIR}/ca.crt:/run/postgresql-tls/ca.crt:ro

@@ -29,7 +29,8 @@ async function runYellowLab(url, {
     signal,
     fetchImpl = fetch,
     maxPollAttempts = 24,
-    pollIntervalMs = 5_000
+    pollIntervalMs = 5_000,
+    providerDisclosure = { provider: 'YellowLab.tools', external: true, consentRecorded: false, targetOriginVerified: false }
 } = {}) {
     const postResponse = await fetchImpl(`${API_BASE}/runs`, {
         method: 'POST',
@@ -93,7 +94,7 @@ async function runYellowLab(url, {
     await fs.mkdir(artifactDir, { recursive: true });
     const logPath = path.join(artifactDir, `yellowlab_${crypto.randomUUID()}.json`);
     await fs.writeFile(logPath, JSON.stringify(cleanedData), { mode: 0o600 });
-    return { logPath, score: cleanedData.globalScore };
+    return { logPath, score: cleanedData.globalScore, providerDisclosure };
 }
 
 module.exports = { runYellowLab };

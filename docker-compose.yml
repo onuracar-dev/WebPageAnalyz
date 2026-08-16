@@ -1,40 +1,624 @@
 services:
+  postgres:
+    image: postgres:17-alpine@sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168
+    environment:
+      POSTGRES_DB: webpage_analyzer
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      # POSTGRES_PASSWORD is retained as a local-development alias. It is
+      # never passed to the API, worker, migrator or queue services.
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD or POSTGRES_PASSWORD}}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 256
+    cap_drop:
+      - ALL
+    # The official image entrypoint must initialize volume ownership and drop
+    # from root to postgres. Restore only those init capabilities; application
+    # and worker services retain a complete capability drop.
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+      - /run/postgresql:size=16m,uid=70,gid=70,mode=755
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - data-internal
+
+  db-bootstrap:
+    image: postgres:17-alpine@sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: webpage_analyzer
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD or POSTGRES_PASSWORD}}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD}
+      POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:?Set POSTGRES_MIGRATOR_PASSWORD}
+      POSTGRES_WORKER_PASSWORD: ${POSTGRES_WORKER_PASSWORD:?Set POSTGRES_WORKER_PASSWORD}
+      POSTGRES_MAINTENANCE_PASSWORD: ${POSTGRES_MAINTENANCE_PASSWORD:?Set POSTGRES_MAINTENANCE_PASSWORD}
+      POSTGRES_QUEUE_PASSWORD: ${POSTGRES_QUEUE_PASSWORD:?Set POSTGRES_QUEUE_PASSWORD}
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-roles.sh"]
+    user: "70:70"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - ./backend/scripts/bootstrap-roles.sh:/bootstrap/bootstrap-roles.sh:ro
+      - ./backend/scripts/bootstrap-roles.sql:/bootstrap/bootstrap-roles.sql:ro
+    networks:
+      - data-internal
+
+  db-migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://wpa_migrator:${POSTGRES_MIGRATOR_PASSWORD:?Set POSTGRES_MIGRATOR_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${MIGRATION_DATABASE_SSLMODE:-require}"
+      QUEUE_DATABASE_URL: "postgresql://wpa_queue:${POSTGRES_QUEUE_PASSWORD:?Set POSTGRES_QUEUE_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${MIGRATION_DATABASE_SSLMODE:-require}"
+      MIGRATION_EXPECTED_ROLE: wpa_migrator
+      # Production defaults require TLS. The checked-in local .env.example
+      # explicitly opts into plaintext for the bundled Postgres only.
+      MIGRATION_REQUIRE_TLS: ${MIGRATION_REQUIRE_TLS:-true}
+      MIGRATION_DATABASE_SSLMODE: ${MIGRATION_DATABASE_SSLMODE:-require}
+      DATABASE_CONNECT_TIMEOUT_SECONDS: ${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}
+      MIGRATION_STATEMENT_TIMEOUT_MS: ${MIGRATION_STATEMENT_TIMEOUT_MS:-30000}
+      MIGRATION_LOCK_TIMEOUT_MS: ${MIGRATION_LOCK_TIMEOUT_MS:-10000}
+      MIGRATION_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${MIGRATION_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+    command: ["npm", "run", "db:bootstrap"]
+    user: "node"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,uid=1000,gid=1000
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - data-internal
+
+  db-grants:
+    image: postgres:17-alpine@sha256:d4bb0a8c1b7bb2e29f976d099e7bfb9a5d8858cffe9e46b35cd302cd1f1f8168
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: webpage_analyzer
+      POSTGRES_ADMIN_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_ADMIN_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:-${POSTGRES_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD or POSTGRES_PASSWORD}}
+    entrypoint: ["/bin/sh", "/bootstrap/apply-runtime-grants.sh"]
+    user: "70:70"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+    volumes:
+      - ./backend/scripts/apply-runtime-grants.sh:/bootstrap/apply-runtime-grants.sh:ro
+      - ./backend/scripts/apply-runtime-grants.sql:/bootstrap/apply-runtime-grants.sql:ro
+    networks:
+      - data-internal
+
   backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
     environment:
       NODE_ENV: production
+      EXECUTION_ROLE: api
+      WORKER_ENABLED: "false"
+      BROWSER_EXECUTION_DISABLED: "true"
+      PDF_EXECUTION_DISABLED: "true"
+      SOURCE_EXECUTION_DISABLED: "true"
+      OSV_EXECUTION_DISABLED: "true"
       PORT: 5000
-      CORS_ORIGINS: ${PUBLIC_ORIGIN:-http://localhost:8080}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
       TRUST_PROXY: "true"
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       API_KEYS: ${API_KEYS:-}
       ADMIN_API_KEYS: ${ADMIN_API_KEYS:-}
+      LEGACY_API_ENABLED: ${LEGACY_API_ENABLED:-false}
+      LEGACY_API_ALLOW_UNAUTHENTICATED_DEVELOPMENT: ${LEGACY_API_ALLOW_UNAUTHENTICATED_DEVELOPMENT:-false}
+      ADMIN_REAUTH_MAX_AGE_MS: ${ADMIN_REAUTH_MAX_AGE_MS:-600000}
+      ADMIN_REAUTH_SESSION_LIFETIME: ${ADMIN_REAUTH_SESSION_LIFETIME:-false}
+      ADMIN_WEBAUTHN_REQUIRED: ${ADMIN_WEBAUTHN_REQUIRED:-true}
+      ADMIN_PRIVILEGED_ROLES: ${ADMIN_PRIVILEGED_ROLES:-super_admin,admin}
+      ADMIN_STEP_UP_MAX_AGE_SECONDS: ${ADMIN_STEP_UP_MAX_AGE_SECONDS:-600}
+      ADMIN_WEBAUTHN_MIN_CREDENTIALS: ${ADMIN_WEBAUTHN_MIN_CREDENTIALS:-1}
+      ADMIN_WEBAUTHN_RECOMMENDED_CREDENTIALS: ${ADMIN_WEBAUTHN_RECOMMENDED_CREDENTIALS:-2}
+      ADMIN_RECOVERY_CODE_COUNT: ${ADMIN_RECOVERY_CODE_COUNT:-10}
+      ADMIN_RECOVERY_SESSION_TTL_SECONDS: ${ADMIN_RECOVERY_SESSION_TTL_SECONDS:-900}
+      ADMIN_WEBAUTHN_ASSERTION_TTL_SECONDS: ${ADMIN_WEBAUTHN_ASSERTION_TTL_SECONDS:-120}
+      APP_URL: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      DATABASE_URL: "postgresql://wpa_runtime:${POSTGRES_RUNTIME_PASSWORD:?Set POSTGRES_RUNTIME_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${DATABASE_SSLMODE:-require}"
+      DATABASE_EXPECTED_ROLE: wpa_runtime
+      DATABASE_CONNECT_TIMEOUT_SECONDS: ${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}
+      DATABASE_STATEMENT_TIMEOUT_MS: ${DATABASE_STATEMENT_TIMEOUT_MS:-30000}
+      DATABASE_LOCK_TIMEOUT_MS: ${DATABASE_LOCK_TIMEOUT_MS:-10000}
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:-require}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+      BETTER_AUTH_URL: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env}
+      SOURCE_ENCRYPTION_KEY: ${SOURCE_ENCRYPTION_KEY:?Set SOURCE_ENCRYPTION_KEY in .env}
+      SOURCE_ARTIFACT_DIR: /app/logs/source-inputs
+      WORKER_RESULT_DIR: /app/worker-results
+      ENGINE_LAB_SERVICE_URL: http://engine-lab-worker:5030
+      ENGINE_LAB_SERVICE_TOKEN: ${ENGINE_LAB_SERVICE_TOKEN:?Set ENGINE_LAB_SERVICE_TOKEN in .env}
+      ENGINE_LAB_SERVICE_ALLOWED_HOSTS: engine-lab-worker
+      BILLING_PROVIDER: paddle
+      ENTERPRISE_SALES_MODE: ${ENTERPRISE_SALES_MODE:-contact}
+      PADDLE_ENVIRONMENT: ${PADDLE_ENVIRONMENT:-sandbox}
+      PADDLE_API_KEY: ${PADDLE_API_KEY:?Set PADDLE_API_KEY in .env}
+      PADDLE_WEBHOOK_SECRET: ${PADDLE_WEBHOOK_SECRET:?Set PADDLE_WEBHOOK_SECRET in .env}
+      PADDLE_PRICE_SIGNAL: ${PADDLE_PRICE_SIGNAL:?Set PADDLE_PRICE_SIGNAL in .env}
+      PADDLE_PRICE_STUDIO: ${PADDLE_PRICE_STUDIO:?Set PADDLE_PRICE_STUDIO in .env}
+      PADDLE_PRICE_ENTERPRISE: ${PADDLE_PRICE_ENTERPRISE:-}
+      AI_PROVIDER: openrouter
+      AI_SERVICE_URL: http://ai-service:5010
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN in .env}
+      # Non-secret model/cost metadata is shared with the API so its durable
+      # quota/cache ledger uses the same deployment-time model identity and
+      # global spend guardrail as the isolated provider service.
+      OPENROUTER_MODEL_PRIMARY: ${OPENROUTER_MODEL_PRIMARY:?Set OPENROUTER_MODEL_PRIMARY in .env}
+      OPENROUTER_MODEL_FALLBACKS: ${OPENROUTER_MODEL_FALLBACKS:-}
+      AI_DAILY_COST_SOFT_LIMIT_USD: ${AI_DAILY_COST_SOFT_LIMIT_USD:-5}
+      AI_DAILY_COST_HARD_LIMIT_USD: ${AI_DAILY_COST_HARD_LIMIT_USD:-10}
+      EMAIL_PROVIDER: resend
+      EMAIL_DELIVERY_ENABLED: "true"
+      EMAIL_SERVICE_URL: http://email-service:5020
+      EMAIL_SERVICE_TOKEN: ${EMAIL_SERVICE_TOKEN:?Set EMAIL_SERVICE_TOKEN in .env}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set SUPPORT_EMAIL in .env}
+      LEGAL_OPERATOR_NAME: ${LEGAL_OPERATOR_NAME:?Set LEGAL_OPERATOR_NAME in .env}
+      LEGAL_OPERATOR_TYPE: ${LEGAL_OPERATOR_TYPE:-}
+      LEGAL_COUNTRY: ${LEGAL_COUNTRY:?Set LEGAL_COUNTRY in .env}
+      LEGAL_BUSINESS_ADDRESS: ${LEGAL_BUSINESS_ADDRESS:?Set LEGAL_BUSINESS_ADDRESS in .env}
+      LEGAL_SUPPORT_EMAIL: ${LEGAL_SUPPORT_EMAIL:?Set LEGAL_SUPPORT_EMAIL in .env}
+      LEGAL_SUPPORT_PHONE: ${LEGAL_SUPPORT_PHONE:-}
+      LEGAL_EFFECTIVE_DATE: ${LEGAL_EFFECTIVE_DATE:?Set LEGAL_EFFECTIVE_DATE in .env}
+      LEGAL_HOSTING_PROVIDER_NAME: ${LEGAL_HOSTING_PROVIDER_NAME:?Set LEGAL_HOSTING_PROVIDER_NAME in .env}
+      LEGAL_HOSTING_PROVIDER_REGION: ${LEGAL_HOSTING_PROVIDER_REGION:-}
+      LEGAL_HOSTING_PROVIDER_PRIVACY_URL: ${LEGAL_HOSTING_PROVIDER_PRIVACY_URL:-}
+      LEGAL_EDGE_PROVIDER_NAME: ${LEGAL_EDGE_PROVIDER_NAME:-}
+      LEGAL_EDGE_PROVIDER_REGION: ${LEGAL_EDGE_PROVIDER_REGION:-}
+      LEGAL_EDGE_PROVIDER_PRIVACY_URL: ${LEGAL_EDGE_PROVIDER_PRIVACY_URL:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITLAB_CLIENT_ID: ${GITLAB_CLIENT_ID:-}
+      GITLAB_CLIENT_SECRET: ${GITLAB_CLIENT_SECRET:-}
+      BITBUCKET_CLIENT_ID: ${BITBUCKET_CLIENT_ID:-}
+      BITBUCKET_CLIENT_SECRET: ${BITBUCKET_CLIENT_SECRET:-}
       MAX_CONCURRENT_ANALYSES: ${MAX_CONCURRENT_ANALYSES:-1}
       MAX_QUEUED_ANALYSES: ${MAX_QUEUED_ANALYSES:-8}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-900000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      SCAN_PROGRESS_RATE_LIMIT_WINDOW_MS: ${SCAN_PROGRESS_RATE_LIMIT_WINDOW_MS:-900000}
+      SCAN_PROGRESS_RATE_LIMIT_MAX: ${SCAN_PROGRESS_RATE_LIMIT_MAX:-600}
+      ADMIN_RATE_LIMIT_WINDOW_MS: ${ADMIN_RATE_LIMIT_WINDOW_MS:-900000}
+      ADMIN_RATE_LIMIT_MAX: ${ADMIN_RATE_LIMIT_MAX:-600}
+      ADMIN_REAUTH_RATE_LIMIT_WINDOW_MS: ${ADMIN_REAUTH_RATE_LIMIT_WINDOW_MS:-900000}
+      ADMIN_REAUTH_RATE_LIMIT_MAX: ${ADMIN_REAUTH_RATE_LIMIT_MAX:-5}
+      ADMIN_PASSKEY_RATE_LIMIT_WINDOW_MS: ${ADMIN_PASSKEY_RATE_LIMIT_WINDOW_MS:-900000}
+      ADMIN_PASSKEY_RATE_LIMIT_MAX: ${ADMIN_PASSKEY_RATE_LIMIT_MAX:-20}
+      ADMIN_RECOVERY_RATE_LIMIT_WINDOW_MS: ${ADMIN_RECOVERY_RATE_LIMIT_WINDOW_MS:-900000}
+      ADMIN_RECOVERY_RATE_LIMIT_MAX: ${ADMIN_RECOVERY_RATE_LIMIT_MAX:-5}
+      LOGIN_RATE_LIMIT_WINDOW_MS: ${LOGIN_RATE_LIMIT_WINDOW_MS:-900000}
+      LOGIN_RATE_LIMIT_MAX: ${LOGIN_RATE_LIMIT_MAX:-10}
+      PASSWORD_RESET_RATE_LIMIT_WINDOW_MS: ${PASSWORD_RESET_RATE_LIMIT_WINDOW_MS:-3600000}
+      PASSWORD_RESET_RATE_LIMIT_MAX: ${PASSWORD_RESET_RATE_LIMIT_MAX:-5}
+      REDEEM_RATE_LIMIT_WINDOW_MS: ${REDEEM_RATE_LIMIT_WINDOW_MS:-900000}
+      REDEEM_RATE_LIMIT_MAX: ${REDEEM_RATE_LIMIT_MAX:-10}
+      ADMIN_MUTATION_RATE_LIMIT_WINDOW_MS: ${ADMIN_MUTATION_RATE_LIMIT_WINDOW_MS:-900000}
+      ADMIN_MUTATION_RATE_LIMIT_MAX: ${ADMIN_MUTATION_RATE_LIMIT_MAX:-60}
+      CRAWLER_MAX_SITEMAPS: ${CRAWLER_MAX_SITEMAPS:-20}
+      CRAWLER_MAX_SITEMAP_DEPTH: ${CRAWLER_MAX_SITEMAP_DEPTH:-3}
+      CRAWLER_MAX_SITEMAP_URLS: ${CRAWLER_MAX_SITEMAP_URLS:-5000}
+      CRAWLER_MAX_SITEMAP_BYTES: ${CRAWLER_MAX_SITEMAP_BYTES:-2097152}
+      CRAWLER_MAX_SITEMAP_DECOMPRESSED_BYTES: ${CRAWLER_MAX_SITEMAP_DECOMPRESSED_BYTES:-8388608}
+      CRAWLER_MAX_PATH_DEPTH: ${CRAWLER_MAX_PATH_DEPTH:-12}
+      CRAWLER_MAX_QUERY_VARIANTS_PER_PATH: ${CRAWLER_MAX_QUERY_VARIANTS_PER_PATH:-5}
       ALLOWED_TARGET_PORTS: "80,443"
       KEEP_ANALYZER_ARTIFACTS: "false"
-      CHROME_PATH: /usr/bin/chromium
-      CHROME_NO_SANDBOX: "false"
-    shm_size: 1gb
+    user: "node"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=256m,mode=1777,uid=1000,gid=1000
+      - /home/node/.cache:size=128m,uid=1000,gid=1000,mode=700
+      - /home/node/.config:size=32m,uid=1000,gid=1000,mode=700
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 256
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-grants:
+        condition: service_completed_successfully
+      ai-service:
+        condition: service_healthy
+      email-service:
+        condition: service_healthy
+      analysis-worker:
+        condition: service_healthy
     expose:
       - "5000"
     volumes:
-      - analyzer-logs:/app/logs
+      - api-logs:/app/logs
+      - worker-results:/app/worker-results:ro
+      - source-staging:/app/logs/source-inputs
+    networks:
+      - app-internal
+      - analyzer-internal
+      - data-internal
+      - billing-egress
+
+  ai-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.ai
+    environment:
+      NODE_ENV: production
+      EXECUTION_ROLE: ai
+      AI_PROVIDER: openrouter
+      AI_SERVICE_HOST: 0.0.0.0
+      AI_SERVICE_PORT: 5010
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?Set AI_SERVICE_TOKEN in .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in .env}
+      OPENROUTER_MODEL_PRIMARY: ${OPENROUTER_MODEL_PRIMARY:?Set OPENROUTER_MODEL_PRIMARY in .env}
+      OPENROUTER_MODEL_FALLBACKS: ${OPENROUTER_MODEL_FALLBACKS:-}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:?Set OPENROUTER_SITE_URL in .env}
+      OPENROUTER_APP_NAME: ${OPENROUTER_APP_NAME:-WebPageAnalyzer}
+      OPENROUTER_DATA_COLLECTION: ${OPENROUTER_DATA_COLLECTION:-deny}
+      OPENROUTER_ZDR: ${OPENROUTER_ZDR:-false}
+      OPENROUTER_METADATA_ENABLED: ${OPENROUTER_METADATA_ENABLED:-true}
+      OPENROUTER_STRUCTURED_OUTPUT_MODE: ${OPENROUTER_STRUCTURED_OUTPUT_MODE:-native}
+      OPENROUTER_REASONING_EFFORT: ${OPENROUTER_REASONING_EFFORT:-}
+      AI_MAX_REQUESTS_PER_MINUTE: ${AI_MAX_REQUESTS_PER_MINUTE:-30}
+      AI_MAX_CONCURRENT_REQUESTS: ${AI_MAX_CONCURRENT_REQUESTS:-2}
+      AI_MAX_INPUT_TOKENS: ${AI_MAX_INPUT_TOKENS:-4096}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1200}
+      AI_DAILY_COST_SOFT_LIMIT_USD: ${AI_DAILY_COST_SOFT_LIMIT_USD:-5}
+      AI_DAILY_COST_HARD_LIMIT_USD: ${AI_DAILY_COST_HARD_LIMIT_USD:-10}
+    user: "node"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777,uid=1000,gid=1000
+      - /home/node/.cache:size=16m,uid=1000,gid=1000,mode=700
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    restart: unless-stopped
+    expose:
+      - "5010"
+    networks:
+      - app-internal
+      - ai-egress
+
+  email-service:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.email
+    environment:
+      NODE_ENV: production
+      EXECUTION_ROLE: email
+      EMAIL_PROVIDER: resend
+      EMAIL_SERVICE_HOST: 0.0.0.0
+      EMAIL_SERVICE_PORT: 5020
+      EMAIL_SERVICE_TOKEN: ${EMAIL_SERVICE_TOKEN:?Set EMAIL_SERVICE_TOKEN in .env}
+      RESEND_API_KEY: ${RESEND_API_KEY:?Set RESEND_API_KEY in .env}
+      EMAIL_FROM: ${EMAIL_FROM:?Set EMAIL_FROM in .env}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set SUPPORT_EMAIL in .env}
+      APP_URL: ${PUBLIC_ORIGIN:?Set PUBLIC_ORIGIN in .env}
+      EMAIL_PROVIDER_HOST_ALLOWLIST: api.resend.com
+      EMAIL_PROVIDER_TIMEOUT_MS: ${EMAIL_PROVIDER_TIMEOUT_MS:-10000}
+    user: "node"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=32m,mode=1777,uid=1000,gid=1000
+      - /home/node/.cache:size=16m,uid=1000,gid=1000,mode=700
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
+    restart: unless-stopped
+    expose:
+      - "5020"
+    networks:
+      - app-internal
+      - email-egress
+
+  analysis-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    environment:
+      NODE_ENV: production
+      EXECUTION_ROLE: worker
+      WORKER_KIND: analysis
+      WORKER_ENABLED: "true"
+      WORKER_SANDBOX_REQUIRED: "true"
+      WORKER_HANDLER_MODULE: /app/platform/worker-handler.js
+      DATABASE_URL: "postgresql://wpa_worker:${POSTGRES_WORKER_PASSWORD:?Set POSTGRES_WORKER_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${DATABASE_SSLMODE:-require}"
+      DATABASE_EXPECTED_ROLE: wpa_worker
+      DATABASE_CONNECT_TIMEOUT_SECONDS: ${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}
+      DATABASE_STATEMENT_TIMEOUT_MS: ${DATABASE_STATEMENT_TIMEOUT_MS:-30000}
+      DATABASE_LOCK_TIMEOUT_MS: ${DATABASE_LOCK_TIMEOUT_MS:-10000}
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:-require}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+      SOURCE_ENCRYPTION_KEY: ${SOURCE_ENCRYPTION_KEY:?Set SOURCE_ENCRYPTION_KEY in .env}
+      SOURCE_ARTIFACT_DIR: /app/logs/source-inputs
+      WORKER_RESULT_DIR: /app/worker-results
+      CHROME_PATH: /usr/bin/chromium
+      ZAP_URL: http://zap:8080
+      ZAP_API_KEY: ${ZAP_API_KEY:?Set ZAP_API_KEY in .env}
+      ZAP_PROXY_BIND_HOST: 0.0.0.0
+      ZAP_PROXY_ADVERTISED_HOST: analysis-worker
+      OSV_SCANNER_PATH: /usr/local/bin/osv-scanner
+      ENGINE_LAB_SERVICE_ENABLED: "true"
+      ENGINE_LAB_SERVICE_HOST: 0.0.0.0
+      ENGINE_LAB_SERVICE_PORT: 5030
+      ENGINE_LAB_SERVICE_TOKEN: ${ENGINE_LAB_SERVICE_TOKEN:?Set ENGINE_LAB_SERVICE_TOKEN in .env}
+      ENGINE_LAB_MAX_CONCURRENT_RUNS: ${ENGINE_LAB_MAX_CONCURRENT_RUNS:-1}
+      ENGINE_LAB_MAX_QUEUED_RUNS: ${ENGINE_LAB_MAX_QUEUED_RUNS:-8}
+      ENGINE_LAB_ARTIFACT_TTL_MS: ${ENGINE_LAB_ARTIFACT_TTL_MS:-86400000}
+      ENGINE_LAB_SHUTDOWN_DRAIN_MS: ${ENGINE_LAB_SHUTDOWN_DRAIN_MS:-15000}
+      KEEP_ANALYZER_ARTIFACTS: "false"
+      REQUIRE_EXTERNAL_PROVIDER_CONSENT: "true"
+      MAX_CONCURRENT_ANALYSES: ${MAX_CONCURRENT_ANALYSES:-1}
+      MAX_QUEUED_ANALYSES: ${MAX_QUEUED_ANALYSES:-8}
+    command: ["node", "scripts/analysis-worker.js"]
+    user: "node"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+      # Worker-only derivative of Docker's default profile, pinned to the
+      # reviewed Playwright source; API/postgres/ZAP retain Docker default.
+      - seccomp:./infra/seccomp/playwright-worker.json
+    tmpfs:
+      - /tmp:size=768m,mode=1777,uid=1000,gid=1000
+      - /home/node/.cache:size=256m,uid=1000,gid=1000,mode=700
+      - /home/node/.config:size=32m,uid=1000,gid=1000,mode=700
+    shm_size: 512m
+    mem_limit: 2g
+    cpus: 2
+    # Lighthouse + Axe + WPA Page legitimately create more than 256 sandboxed
+    # Chromium threads during one bounded scan. Keep a finite ceiling while
+    # leaving enough headroom for the worker healthcheck and cleanup paths.
+    pids_limit: 512
+    restart: unless-stopped
+    expose:
+      - "5030"
+    depends_on:
+      db-grants:
+        condition: service_completed_successfully
+      zap:
+        condition: service_healthy
+    volumes:
+      - worker-artifacts:/app/worker-artifacts
+      - worker-results:/app/worker-results:rw
+      # The worker deletes the encrypted source after processing. This volume
+      # contains no API/auth/provider secrets and is not mounted into ZAP.
+      - source-staging:/app/logs/source-inputs:rw
+    networks:
+      analyzer-internal:
+        aliases:
+          - engine-lab-worker
+      data-internal:
+      analysis-egress:
+
+  maintenance-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.maintenance
+    environment:
+      NODE_ENV: production
+      EXECUTION_ROLE: maintenance
+      WORKER_KIND: maintenance
+      WORKER_ENABLED: "false"
+      WORKER_HANDLER_MODULE: /app/platform/worker-handler.js
+      BROWSER_EXECUTION_DISABLED: "true"
+      PDF_EXECUTION_DISABLED: "true"
+      SOURCE_EXECUTION_DISABLED: "true"
+      OSV_EXECUTION_DISABLED: "true"
+      DATABASE_URL: "postgresql://wpa_maintenance:${POSTGRES_MAINTENANCE_PASSWORD:?Set POSTGRES_MAINTENANCE_PASSWORD}@postgres:5432/webpage_analyzer?connect_timeout=${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}&statement_timeout=${DATABASE_STATEMENT_TIMEOUT_MS:-30000}&lock_timeout=${DATABASE_LOCK_TIMEOUT_MS:-10000}&idle_in_transaction_session_timeout=${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}&sslmode=${DATABASE_SSLMODE:-require}"
+      DATABASE_EXPECTED_ROLE: wpa_maintenance
+      DATABASE_CONNECT_TIMEOUT_SECONDS: ${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}
+      DATABASE_STATEMENT_TIMEOUT_MS: ${DATABASE_STATEMENT_TIMEOUT_MS:-30000}
+      DATABASE_LOCK_TIMEOUT_MS: ${DATABASE_LOCK_TIMEOUT_MS:-10000}
+      DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DATABASE_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+      DATABASE_SSLMODE: ${DATABASE_SSLMODE:-require}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: "true"
+      ARTIFACT_DIR: /app/maintenance-artifacts
+      SOURCE_ARTIFACT_DIR: /app/logs/source-inputs
+      WORKER_RESULT_DIR: /app/worker-results
+      RETENTION_POLL_MS: ${RETENTION_POLL_MS:-21600000}
+      WORKER_LEASE_MS: ${WORKER_LEASE_MS:-900000}
+    command: ["node", "scripts/maintenance-worker.js"]
+    user: "node"
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=128m,mode=1777,uid=1000,gid=1000
+      - /home/node/.cache:size=32m,uid=1000,gid=1000,mode=700
+      - /home/node/.config:size=16m,uid=1000,gid=1000,mode=700
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    restart: unless-stopped
+    depends_on:
+      db-grants:
+        condition: service_completed_successfully
+    volumes:
+      - worker-results:/app/worker-results:rw
+      - source-staging:/app/logs/source-inputs:rw
+    networks:
+      - data-internal
+
+  zap:
+    image: ghcr.io/zaproxy/zaproxy@sha256:35ea10525f93cfdbf81fd2b8de624f974f7559351f664415156815b49e7e0b66
+    command:
+      - zap.sh
+      - -daemon
+      - -silent
+      - -host
+      - 0.0.0.0
+      - -port
+      - "8080"
+      - -config
+      - api.key=${ZAP_API_KEY:?Set ZAP_API_KEY in .env}
+      - -config
+      - api.addrs.addr.name=.*
+      - -config
+      - api.addrs.addr.regex=true
+      - -config
+      - spider.maxDepth=5
+    environment:
+      JAVA_TOOL_OPTIONS: -Djava.util.prefs.userRoot=/tmp/java-prefs
+      ZAP_API_KEY: ${ZAP_API_KEY:?Set ZAP_API_KEY in .env}
+    expose:
+      - "8080"
+    user: "zap"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+      - /home/zap/.ZAP:size=256m,uid=1000,gid=1000,mode=700
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/JSON/core/view/version/?apikey=$${ZAP_API_KEY} >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 25s
+    restart: unless-stopped
+    networks:
+      - analysis-egress
 
   frontend:
     build:
-      context: ./frontend
+      context: ./website
       args:
         VITE_API_BASE_URL: ""
     depends_on:
       backend:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      # TLS terminates at the host reverse proxy. Do not publish the container
+      # listener on every host interface.
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    user: "nginx"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,uid=101,gid=101,mode=1777
+      - /var/cache/nginx:size=64m,uid=101,gid=101,mode=755
+      - /var/run:size=16m,uid=101,gid=101,mode=755
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    networks:
+      - public
+      - app-internal
 
 volumes:
-  analyzer-logs:
+  api-logs:
+  worker-artifacts:
+  source-staging:
+  worker-results:
+  postgres-data:
+
+networks:
+  public:
+  app-internal:
+    internal: true
+  # Dedicated API-to-worker control plane. The analysis worker never joins the
+  # frontend/AI/email application network.
+  analyzer-internal:
+    internal: true
+  data-internal:
+    internal: true
+  # The analysis worker and ZAP are the only services attached to a network
+  # with external egress. Production must additionally deny metadata and
+  # private/link-local ranges at the host/cloud firewall layer.
+  analysis-egress:
+  # These provider networks have outbound access but no database, worker, or
+  # frontend membership. Enforce provider-domain/IP policy at the host/cloud
+  # firewall because Compose itself is not a hostname-aware egress firewall.
+  billing-egress:
+  ai-egress:
+  email-egress:

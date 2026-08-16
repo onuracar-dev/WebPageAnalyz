@@ -1,7 +1,7 @@
 const fs = require('node:fs').promises;
 const path = require('node:path');
 
-const artifactPattern = /^(?:lighthouse_(?:desktop|mobile)|yellowlab|axe)_[0-9a-f-]+\.json$/i;
+const artifactPattern = /^(?:(?:lighthouse_(?:desktop|mobile)|yellowlab|axe|wpa_page|advanced_browser)_[0-9a-f-]+\.json|(?:wpa|advanced)_(?:desktop|mobile)_[0-9a-f-]+\.png)$/i;
 
 async function clearArtifacts(artifactDir) {
     await fs.mkdir(artifactDir, { recursive: true });

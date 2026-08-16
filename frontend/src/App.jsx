@@ -5,6 +5,9 @@ import { createHistoryEntry, loadHistory, reportFileName, saveHistory, serialize
 import { hasCompleteScores, reportScoresForDevice } from './report.js'
 
 const ReportDashboard = lazy(() => import('./components/ReportDashboard.jsx'))
+const SaasWorkspace = lazy(() => import('./components/SaasWorkspace.jsx'))
+const AdminPanel = lazy(() => import('./components/AdminPanel.jsx'))
+const AuthPanel = lazy(() => import('./components/AuthPanel.jsx'))
 
 function App() {
   const [url, setUrl] = useState('')
@@ -139,6 +142,9 @@ function App() {
       </header>
 
       <main>
+        <Suspense fallback={null}><AuthPanel /></Suspense>
+        <Suspense fallback={null}><SaasWorkspace /></Suspense>
+        <Suspense fallback={null}><AdminPanel /></Suspense>
         <section className="glass-panel audit-panel" aria-labelledby="audit-title">
           <h2 id="audit-title" className="sr-only">Yeni analiz</h2>
           <form onSubmit={handleAnalyze} className="input-group">
@@ -218,7 +224,7 @@ function App() {
       </main>
 
       <footer>
-        <p>Open-source bir proje · <a href="https://github.com/onuracar-dev/WebPageAnalyz" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+        <p>WebPage Analyzer · Private audit workspace</p>
       </footer>
     </div>
   )

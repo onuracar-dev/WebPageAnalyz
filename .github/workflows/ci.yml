@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20.19.5, 24]
+        node: [22.19.0, 24.19.0]
     env:
       PUPPETEER_SKIP_DOWNLOAD: "true"
     steps:
@@ -28,6 +28,10 @@ jobs:
       - run: npm ci
         working-directory: backend
       - run: npm run check
+        working-directory: backend
+      - run: npm run db:check
+        working-directory: backend
+      - run: npm run ai:evaluate
         working-directory: backend
       - run: npm run lint
         working-directory: backend
@@ -79,5 +83,93 @@ jobs:
           cache: npm
           cache-dependency-path: website/package-lock.json
       - run: npm ci
+      - run: npm run check
       - run: npm run build
+      - run: npm run test:plan-contract
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       - run: npm audit
+
+  infra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.19.0
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm run db:check
+        working-directory: backend
+      - run: npm run runtime:drift -- --source-root . --source-only --skip-database
+        working-directory: backend
+      - run: docker compose --env-file .env.example config --quiet
+        env:
+          PADDLE_API_KEY: ci_paddle_api_key_placeholder
+          PADDLE_WEBHOOK_SECRET: ci_paddle_webhook_secret_placeholder
+          PADDLE_PRICE_SIGNAL: pri_ci_signal
+          PADDLE_PRICE_STUDIO: pri_ci_studio
+          OPENROUTER_API_KEY: ci_openrouter_api_key_placeholder
+          OPENROUTER_MODEL_PRIMARY: provider/ci-model
+          RESEND_API_KEY: ci_resend_api_key_placeholder
+          EMAIL_FROM: "WebPageAnalyzer <noreply@example.test>"
+          SUPPORT_EMAIL: support@example.test
+          LEGAL_OPERATOR_NAME: CI Operator
+          LEGAL_BUSINESS_ADDRESS: CI address only
+          LEGAL_SUPPORT_EMAIL: support@example.test
+          LEGAL_EFFECTIVE_DATE: 2026-08-15
+          LEGAL_HOSTING_PROVIDER_NAME: CI VDS Provider
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: false
+          tags: webpageanalyz-api:ci
+          sbom: true
+          provenance: mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.worker
+          push: false
+          tags: webpageanalyz-worker:ci
+          sbom: true
+          provenance: mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.maintenance
+          push: false
+          tags: webpageanalyz-maintenance:ci
+          sbom: true
+          provenance: mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.ai
+          push: false
+          tags: webpageanalyz-ai:ci
+          sbom: true
+          provenance: mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.email
+          push: false
+          tags: webpageanalyz-email:ci
+          sbom: true
+          provenance: mode=max
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./website
+          file: ./website/Dockerfile
+          push: false
+          tags: webpageanalyz-website:ci
+          sbom: true
+          provenance: mode=max

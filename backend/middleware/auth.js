@@ -54,4 +54,4 @@ function requireAdminApiKey(configuredKeys = []) {
     };
 }
 
-module.exports = { extractApiKey, optionalApiKey, requireAdminApiKey };
+module.exports = { extractApiKey, keyMatches, optionalApiKey, requireAdminApiKey };

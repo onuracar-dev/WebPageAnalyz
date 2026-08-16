@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="98" height="98" viewBox="0 0 98 98" role="img" aria-label="WebPage Analyzer" shape-rendering="crispEdges">
+  <rect width="98" height="98" fill="#f7f4ef" />
+  <g fill="#101111">
+    <rect x="12" y="18" width="74" height="9" />
+    <rect x="12" y="37" width="74" height="9" />
+    <rect x="12" y="55" width="38" height="9" />
+    <rect x="12" y="74" width="23" height="9" />
+  </g>
+  <rect x="44" y="69" width="14" height="14" fill="#174b9b" />
+</svg>

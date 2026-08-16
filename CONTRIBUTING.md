@@ -7,7 +7,7 @@ Thanks for improving WebPage Analyzer.
 1. Fork the repository and create a focused branch.
 2. Copy the `.env.example` files; never commit real API keys or target data.
 3. Install dependencies with `npm ci` in both `backend` and `frontend`.
-4. Add tests for behavior changes. Backend tests must mock DNS, browsers, YellowLab, and Gemini unless an explicitly manual integration test is being added.
+4. Add tests for behavior changes. Backend tests must mock DNS, browsers, YellowLab, OpenRouter/legacy AI adapters, Resend, and billing providers unless an explicitly guarded manual integration test is being added.
 5. Run the complete verification commands from the README.
 6. Open a pull request describing behavior, security impact, and manual verification.
 
