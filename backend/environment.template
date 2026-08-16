@@ -140,6 +140,9 @@ OSV_EXECUTION_DISABLED=false
 WORKER_SANDBOX_REQUIRED=true
 WORKER_HANDLER_MODULE=platform/worker-handler.js
 
+# Development defaults to paid-provider mode for focused adapter tests. Set
+# false for Free + redeem-only operation; Paddle values may then remain empty.
+PAYMENTS_ENABLED=true
 BILLING_PROVIDER=paddle
 ENTERPRISE_SALES_MODE=contact
 PADDLE_ENVIRONMENT=sandbox

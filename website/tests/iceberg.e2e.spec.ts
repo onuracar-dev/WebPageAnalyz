@@ -1,7 +1,7 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { installApiFixtures, workspaceDashboard } from './iceberg-fixtures';
+import { installApiFixtures, legalConfig, workspaceDashboard } from './iceberg-fixtures';
 
 async function capture(page: Page, testInfo: TestInfo, name: string) {
   await page.waitForTimeout(750);
@@ -77,7 +77,8 @@ test.describe('Cutaway public narrative', () => {
     await expect(page.getByRole('dialog', { name: /choose the depth/i })).toBeVisible();
     await expectNativeViewportScrollbarHidden(page);
     await expect(page.getByRole('link', { name: 'Start Free' })).toBeVisible();
-    for (const plan of ['Signal', 'Studio']) await expect(page.getByRole('link', { name: `Choose ${plan}` })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Redeem access' })).toHaveCount(2);
+    for (const link of await page.getByRole('link', { name: 'Redeem access' }).all()) await expect(link).toHaveAttribute('href', '/register');
     await expect(page.getByRole('link', { name: 'Contact sales' })).toHaveAttribute('href', '/contact?plan=enterprise');
     await expect(page.getByText(/no credit card|required instantly|trusted by/i)).toHaveCount(0);
   });
@@ -529,6 +530,22 @@ test.describe('account and protected product routes', () => {
     await expect(page.getByText(/codeHash|codeSalt|grantId/i)).toHaveCount(0);
   });
 
+  test('redeem-only early access removes checkout UI and never sends an upgrade request', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium', 'desktop early-access contract fixture');
+    await installApiFixtures(page, 'workspace');
+    let checkoutRequests = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/api/v1/billing/checkout') checkoutRequests += 1;
+    });
+    await page.goto('/app?checkout=studio');
+    await expect(page).toHaveURL(/\/app\/settings\/billing$/);
+    await expect(page.getByRole('heading', { name: 'Plan and billing' })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText(/paid checkout is paused/i);
+    await expect(page.getByLabel('Redeem code')).toBeVisible();
+    await expect(page.getByRole('dialog', { name: /review the recurring purchase/i })).toHaveCount(0);
+    expect(checkoutRequests).toBe(0);
+  });
+
   test('report comparison keeps partial evidence and surfaces service errors', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'desktop comparison contract fixture');
     await installApiFixtures(page, 'workspace');
@@ -589,6 +606,11 @@ test.describe('account and protected product routes', () => {
   test('paid checkout requires a canonical recurring purchase confirmation', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium', 'desktop checkout contract fixture');
     await installApiFixtures(page, 'workspace');
+    await page.route('**/api/v1/legal/config', (route) => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ ...legalConfig, billing: { ...legalConfig.billing, paymentsEnabled: true, mode: 'paid', merchantOfRecord: 'Paddle', recurring: true } }),
+    }));
     let checkoutBody: unknown;
     let idempotencyKey = '';
     await page.route('**/api/v1/billing/checkout', (route) => {

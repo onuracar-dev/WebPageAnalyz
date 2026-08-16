@@ -138,6 +138,26 @@ function executionUnavailable(code, message) {
     return new AppError(message, { status: 503, code, expose: true });
 }
 
+function paymentsAreEnabled(config) {
+    return config.billing?.paymentsEnabled !== false;
+}
+
+function assertPaymentsEnabled(config) {
+    if (!paymentsAreEnabled(config)) {
+        throw new AppError('Paid billing is disabled during early access. Use a redeem code or an administrator grant.', {
+            status: 409,
+            code: 'PAYMENTS_DISABLED',
+            expose: true
+        });
+    }
+}
+
+function requirePaymentsEnabled(config) {
+    return (_request, _response, next) => {
+        try { assertPaymentsEnabled(config); next(); } catch (error) { next(error); }
+    };
+}
+
 function mutationOperation(request, payload) {
     return {
         idempotencyKey: normalizeIdempotencyKey(request.get('Idempotency-Key')),
@@ -289,6 +309,7 @@ function createApp(options = {}) {
     });
 
     const app = express();
+    const requirePaidBilling = requirePaymentsEnabled(config);
     let platformReady = false;
     const webhookWorkerId = `webhook-${crypto.randomUUID()}`;
     let webhookTimer = null;
@@ -435,7 +456,7 @@ function createApp(options = {}) {
         }));
         app.all('/api/auth/*splat', authService.handler);
     }
-    app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json', limit: '256kb' }), async (request, response, next) => {
+    app.post('/api/v1/billing/webhook', requirePaidBilling, express.raw({ type: 'application/json', limit: '256kb' }), async (request, response, next) => {
         try {
             const result = await billingProvider.handleWebhook(request.body, request.get(billingProvider.signatureHeaderName) || '');
             response.json(result);
@@ -553,11 +574,16 @@ function createApp(options = {}) {
                 ...(config.legal.hostingProviderRegion ? { processingLocations: [config.legal.hostingProviderRegion] } : {}),
                 ...(config.legal.hostingProviderPrivacyUrl ? { privacyUrl: config.legal.hostingProviderPrivacyUrl } : {})
             },
-            { provider: 'Paddle', purpose: 'Merchant of Record, checkout, subscription and payment lifecycle', dataCategories: ['billing identifiers', 'transaction and subscription status'], privacyUrl: 'https://www.paddle.com/legal/privacy' },
             { provider: 'Resend', purpose: 'Transactional email delivery', dataCategories: ['recipient email', 'message delivery metadata'], privacyUrl: 'https://resend.com/legal/privacy-policy' },
             { provider: 'OpenRouter', purpose: 'Gateway for AI-generated remediation suggestions', dataCategories: ['minimized finding and technical evidence', 'model usage metadata'], privacyUrl: 'https://openrouter.ai/privacy', routing: 'Underlying model providers may vary according to the configured routing policy.' },
             { provider: 'YellowLab.tools', purpose: 'External performance analysis after an explicit per-scan disclosure', dataCategories: ['public target URL', 'analysis job and performance result metadata'], routing: 'The target URL is submitted only when the scan request records external-provider consent.' }
         ];
+        if (paymentsAreEnabled(config)) subprocessors.splice(1, 0, {
+            provider: 'Paddle',
+            purpose: 'Merchant of Record, checkout, subscription and payment lifecycle',
+            dataCategories: ['billing identifiers', 'transaction and subscription status'],
+            privacyUrl: 'https://www.paddle.com/legal/privacy'
+        });
         if (config.legal.edgeProviderName) subprocessors.push({
             provider: config.legal.edgeProviderName,
             purpose: 'Configured DNS, TLS, reverse-proxy or edge delivery services',
@@ -580,9 +606,11 @@ function createApp(options = {}) {
             subprocessors,
             billing: {
                 provider: config.billing.provider,
-                merchantOfRecord: config.billing.provider === 'paddle' ? 'Paddle' : null,
+                paymentsEnabled: paymentsAreEnabled(config),
+                mode: paymentsAreEnabled(config) ? 'paid' : 'redeem_only',
+                merchantOfRecord: paymentsAreEnabled(config) && config.billing.provider === 'paddle' ? 'Paddle' : null,
                 enterpriseSalesMode: config.billing.enterpriseSalesMode,
-                recurring: true,
+                recurring: paymentsAreEnabled(config),
                 termsPath: '/terms',
                 refundPath: '/refund',
                 cancellationPath: '/app/settings/billing'
@@ -673,7 +701,7 @@ function createApp(options = {}) {
     app.patch('/api/v1/support/tickets/:id', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.support), supportLimiter, validateBody(supportCustomerTransitionSchema), async (request, response, next) => {
         try { response.json({ ticket: await supportService.transitionCustomer(request.platformIdentity.workspaceId, request.platformIdentity.userId, request.params.id, request.validatedBody.status, request.id) }); } catch (error) { next(error); }
     });
-    app.post('/api/v1/billing/checkout', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), validateBody(checkoutSchema), async (request, response, next) => {
+    app.post('/api/v1/billing/checkout', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), requirePaidBilling, validateBody(checkoutSchema), async (request, response, next) => {
         try {
             const plan = getPlan(request.validatedBody.planId);
             if (!plan) throw new AppError('Unknown billing plan.', { status: 400, code: 'PLAN_NOT_FOUND' });
@@ -751,13 +779,21 @@ function createApp(options = {}) {
             response.status(201).json({ ...checkout, checkout, acceptance: { id: acceptance.id, acceptedAt: acceptance.acceptedAt, termsVersion: acceptance.termsVersion, refundPolicyVersion: acceptance.refundPolicyVersion } });
         } catch (error) { next(error); }
     });
-    app.post('/api/v1/billing/portal', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), async (request, response, next) => {
-        try { response.status(201).json(await billingProvider.createCustomerPortal({ userId: request.platformIdentity.userId, workspaceId: request.platformIdentity.workspaceId })); } catch (error) { next(error); }
+    app.post('/api/v1/billing/portal', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), requirePaidBilling, async (request, response, next) => {
+        try {
+            response.status(201).json(await billingProvider.createCustomerPortal({ userId: request.platformIdentity.userId, workspaceId: request.platformIdentity.workspaceId }));
+        } catch (error) { next(error); }
     });
     app.get('/api/v1/billing/subscription', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), async (request, response, next) => {
-        try { response.json({ subscription: await billingProvider.getSubscription({ userId: request.platformIdentity.userId, workspaceId: request.platformIdentity.workspaceId }) }); } catch (error) { next(error); }
+        try {
+            const identity = { userId: request.platformIdentity.userId, workspaceId: request.platformIdentity.workspaceId };
+            const subscription = paymentsAreEnabled(config)
+                ? await billingProvider.getSubscription(identity)
+                : await platformStore.getSubscription?.(identity) || null;
+            response.json({ subscription });
+        } catch (error) { next(error); }
     });
-    app.post('/api/v1/billing/cancel', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), async (request, response, next) => {
+    app.post('/api/v1/billing/cancel', ...workspaceAuthentication, requireWorkspacePermission(WORKSPACE_PERMISSIONS.billing), requirePaidBilling, async (request, response, next) => {
         try {
             const subscription = await billingProvider.getSubscription({ userId: request.platformIdentity.userId, workspaceId: request.platformIdentity.workspaceId });
             const subscriptionId = subscription?.providerSubscriptionId || subscription?.stripeSubscriptionId || subscription?.paddleSubscriptionId;
@@ -1400,7 +1436,7 @@ function createApp(options = {}) {
     app.post('/api/v1/admin/workspaces/:workspaceId/scans/:scanId/retry', adminAuthentication, requireAdminRole('operator', 'admin', 'super_admin'), adminMutationLimiter, validateBody(adminScanMutationSchema), async (request, response, next) => {
         try { response.status(202).json({ scan: await platformService.retryScan(request.params.workspaceId, request.params.scanId, request.validatedBody, request.adminIdentity.actorId, request.id) }); } catch (error) { next(error); }
     });
-    app.post('/api/v1/admin/workspaces/:id/billing/reconcile', adminAuthentication, requireAdminRole('admin', 'super_admin'), adminMutationLimiter, validateBody(adminReasonSchema), async (request, response, next) => {
+    app.post('/api/v1/admin/workspaces/:id/billing/reconcile', adminAuthentication, requireAdminRole('admin', 'super_admin'), adminMutationLimiter, requirePaidBilling, validateBody(adminReasonSchema), async (request, response, next) => {
         try {
             const userId = await platformStore.resolveEntitlementUser?.(request.params.id, null);
             const result = await billingProvider.reconcileSubscription({ userId, workspaceId: request.params.id });

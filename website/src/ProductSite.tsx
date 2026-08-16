@@ -4,6 +4,8 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
 import 'lenis/dist/lenis.css';
+import type { PublicLegalConfig } from './LegalContent';
+import { apiFetch } from './portal/api';
 import { navigate } from './portal/router';
 import { PUBLIC_PLANS } from './planCatalog';
 
@@ -29,6 +31,15 @@ export default function ProductSite() {
   const [target, setTarget] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<PublicLegalConfig>('/api/v1/legal/config')
+      .then((config) => { if (!cancelled) setPaymentsEnabled(config.billing?.paymentsEnabled === true); })
+      .catch(() => { if (!cancelled) setPaymentsEnabled(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -277,16 +288,30 @@ export default function ProductSite() {
           <button ref={plansCloseRef} aria-label="Close plans" onClick={() => setPlansOpen(false)}><X /></button>
         </header>
         <div className="wpa-plans__stage">
-          {PUBLIC_PLANS.map((plan, index) => <article key={plan.id} className={`wpa-plan-aperture wpa-plan-aperture--${plan.id}`}>
-            <div className="wpa-plan-aperture__frame" aria-hidden="true">{plan.id === 'studio' && <i />}</div>
-            <div className="wpa-plan-aperture__content">
-              <small>0{index + 1} / {plan.name}</small>
-              <strong>{plan.id === 'free' ? '$0' : plan.id === 'enterprise' ? `From $${plan.priceUsd}` : `$${plan.priceUsd}`}<span>{plan.id === 'free' ? ' bounded access' : plan.id === 'enterprise' ? ' / month · invitation' : '/ month'}</span></strong>
-              <p>{plan.description}</p>
-              <ul>{(SAFE_PLAN_FEATURES[plan.id] || plan.features).map((feature) => <li key={feature}>{feature}</li>)}</ul>
-              <a href={plan.id === 'enterprise' ? '/contact?plan=enterprise' : plan.id === 'free' ? '/register' : `/register?plan=${plan.id}`}>{plan.id === 'enterprise' ? 'Contact sales' : plan.id === 'free' ? 'Start Free' : `Choose ${plan.name}`}<ArrowRight /></a>
-            </div>
-          </article>)}
+          {PUBLIC_PLANS.map((plan, index) => {
+            const action = plan.id === 'enterprise'
+              ? 'Contact sales'
+              : plan.id === 'free'
+                ? 'Start Free'
+                : paymentsEnabled
+                  ? `Choose ${plan.name}`
+                  : 'Redeem access';
+            const href = plan.id === 'enterprise'
+              ? '/contact?plan=enterprise'
+              : plan.id === 'free' || !paymentsEnabled
+                ? '/register'
+                : `/register?plan=${plan.id}`;
+            return <article key={plan.id} className={`wpa-plan-aperture wpa-plan-aperture--${plan.id}`}>
+              <div className="wpa-plan-aperture__frame" aria-hidden="true">{plan.id === 'studio' && <i />}</div>
+              <div className="wpa-plan-aperture__content">
+                <small>0{index + 1} / {plan.name}</small>
+                <strong>{plan.id === 'free' ? '$0' : plan.id === 'enterprise' ? `From $${plan.priceUsd}` : `$${plan.priceUsd}`}<span>{plan.id === 'free' ? ' bounded access' : plan.id === 'enterprise' ? ' / month · invitation' : '/ month'}</span></strong>
+                <p>{plan.description}</p>
+                <ul>{(SAFE_PLAN_FEATURES[plan.id] || plan.features).map((feature) => <li key={feature}>{feature}</li>)}</ul>
+                <a href={href}>{action}<ArrowRight /></a>
+              </div>
+            </article>;
+          })}
         </div>
       </section>
     </div>}

@@ -115,7 +115,7 @@ function assertProductionConfig(config) {
     if (config.executionRole === 'email' && config.email.provider !== 'resend') throw new Error('EMAIL_PROVIDER must be resend for the production email service.');
     if (['api', 'ai'].includes(config.executionRole) && config.ai.dailyCostSoftLimitUsd > config.ai.dailyCostHardLimitUsd) throw new Error('AI_DAILY_COST_SOFT_LIMIT_USD must not exceed AI_DAILY_COST_HARD_LIMIT_USD.');
     if (!['contact', 'invite_only'].includes(config.billing.enterpriseSalesMode)) throw new Error('ENTERPRISE_SALES_MODE must be contact or invite_only in production.');
-    if (config.executionRole === 'api') required.push(
+    if (config.executionRole === 'api' && config.billing.paymentsEnabled) required.push(
         ['PADDLE_API_KEY', config.billing.paddle.apiKey, 16],
         ['PADDLE_WEBHOOK_SECRET', config.billing.paddle.webhookSecret, 16],
         ['PADDLE_PRICE_SIGNAL', config.billing.paddle.prices.signal, 3],
@@ -260,6 +260,7 @@ function loadConfig(env = process.env) {
         reportPayloadMaxBytes: integer(env.REPORT_PAYLOAD_MAX_BYTES, 20 * 1024 * 1024, { min: 64 * 1024, max: 100 * 1024 * 1024 }),
         requireExternalProviderConsent: boolean(env.REQUIRE_EXTERNAL_PROVIDER_CONSENT, nodeEnv === 'production'),
         billing: {
+            paymentsEnabled: boolean(env.PAYMENTS_ENABLED, nodeEnv !== 'production'),
             provider: String(env.BILLING_PROVIDER || (nodeEnv === 'production' ? 'paddle' : 'paddle')).trim().toLowerCase(),
             enterpriseSalesMode: String(env.ENTERPRISE_SALES_MODE || 'contact').trim().toLowerCase(),
             paddle: {

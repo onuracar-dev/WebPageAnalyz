@@ -1,14 +1,17 @@
 # External accounts and manual launch configuration
 
-This checklist contains work that cannot be completed by repository code. Do not accept live revenue until every required item has an owner and evidence.
+This checklist contains work that cannot be completed by repository code. The
+initial Free + redeem-only launch uses `PAYMENTS_ENABLED=false`; Paddle items are
+not prerequisites for that non-revenue mode. Do not set `PAYMENTS_ENABLED=true`
+or accept live revenue until every Paddle item has an owner and evidence.
 
 ## Required before launch
 
 - [ ] Ubuntu 24.04 LTS VDS with 10 vCPU, 12 GB RAM and at least 200 GB NVMe.
 - [ ] Production domain and authoritative DNS access.
 - [ ] TLS certificate and renewal monitoring. Cloudflare is optional; do not list it as a processor unless it is actually enabled.
-- [ ] Paddle seller account, applicable identity/business verification and approved production domain.
-- [ ] Paddle products and monthly prices for Signal and Studio. Enterprise is Contact/invite-only at launch.
+- [ ] Before enabling paid billing: Paddle seller account, applicable identity/business verification and approved production domain.
+- [ ] Before enabling paid billing: Paddle products and monthly prices for Signal and Studio. Enterprise remains contact/invite-only.
 - [ ] Resend account and verified sending domain.
 - [ ] OpenRouter account, server-side API key and sufficient credits for the configured paid model.
 - [ ] UptimeRobot or an equivalent external HTTPS monitor.
@@ -19,6 +22,10 @@ This checklist contains work that cannot be completed by repository code. Do not
 
 ## Paddle
 
+These steps are deferred while `PAYMENTS_ENABLED=false`. The integration stays
+in source, but the API must have no Paddle startup dependency or provider call
+in redeem-only mode.
+
 1. Complete seller verification and production-domain review in Paddle.
 2. Configure the approved HTTPS website with accurate product descriptions, prices, recurring interval, support contact, Terms, Privacy and Refund links.
 3. Create monthly recurring prices for Signal and Studio; copy the price IDs to `PADDLE_PRICE_SIGNAL` and `PADDLE_PRICE_STUDIO`.
@@ -27,6 +34,7 @@ This checklist contains work that cannot be completed by repository code. Do not
 6. Copy the API key and endpoint secret to the secret store as `PADDLE_API_KEY` and `PADDLE_WEBHOOK_SECRET`. Never expose either value to website JavaScript.
 7. Run the Paddle sandbox lifecycle smoke test, including duplicate and deliberately out-of-order fixtures, before changing `PADDLE_ENVIRONMENT` to `production`.
 8. Confirm that cancellation and payment-method recovery links open through a fresh customer-portal session; portal URLs must not be cached or embedded.
+9. Only after all earlier steps pass, set `PAYMENTS_ENABLED=true`; missing API, webhook or price configuration must keep production startup closed.
 
 Authority: [Paddle subscription provisioning](https://developer.paddle.com/build/subscriptions/provision-access-webhooks), [signature verification](https://developer.paddle.com/webhooks/about/signature-verification/), [customer portal sessions](https://developer.paddle.com/api-reference/customer-portals/create-customer-portal-session), [domain verification](https://www.paddle.com/help/start/account-verification/what-is-domain-verification), [Buyer Terms](https://www.paddle.com/legal/buyer-terms), and [Refund Policy](https://www.paddle.com/legal/refund-policy).
 

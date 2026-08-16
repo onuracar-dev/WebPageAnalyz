@@ -11,7 +11,7 @@ function productionApiEnv(overrides = {}) {
         ENGINE_LAB_SERVICE_URL: 'http://engine-lab-worker:5030', ENGINE_LAB_SERVICE_TOKEN: 'l'.repeat(48),
         AI_SERVICE_URL: 'http://ai-service:5010', AI_SERVICE_TOKEN: 'i'.repeat(48), OPENROUTER_MODEL_PRIMARY: 'vendor/production-model',
         EMAIL_SERVICE_URL: 'http://email-service:5020', EMAIL_SERVICE_TOKEN: 'e'.repeat(48),
-        BILLING_PROVIDER: 'paddle', PADDLE_API_KEY: 'pdl_live_' + 'p'.repeat(32),
+        PAYMENTS_ENABLED: 'true', BILLING_PROVIDER: 'paddle', PADDLE_API_KEY: 'pdl_live_' + 'p'.repeat(32),
         PADDLE_WEBHOOK_SECRET: 'w'.repeat(48), PADDLE_PRICE_SIGNAL: 'pri_signal', PADDLE_PRICE_STUDIO: 'pri_studio',
         ENTERPRISE_SALES_MODE: 'contact',
         LEGAL_OPERATOR_NAME: 'Configured Operator', LEGAL_COUNTRY: 'TR',
@@ -29,6 +29,30 @@ test('production runtime rejects memory storage, weak secrets and non-secure pub
 test('production runtime accepts explicit durable storage and strong secrets', () => {
     const config = loadConfig(productionApiEnv());
     assert.equal(assertProductionConfig(config), config);
+});
+
+test('production early access accepts disabled payments without Paddle credentials', () => {
+    const config = loadConfig(productionApiEnv({
+        PAYMENTS_ENABLED: 'false',
+        PADDLE_API_KEY: '',
+        PADDLE_WEBHOOK_SECRET: '',
+        PADDLE_PRICE_SIGNAL: '',
+        PADDLE_PRICE_STUDIO: '',
+        PADDLE_PRICE_ENTERPRISE: ''
+    }));
+    assert.equal(config.billing.paymentsEnabled, false);
+    assert.equal(assertProductionConfig(config), config);
+});
+
+test('production paid billing still fails closed when Paddle configuration is missing', () => {
+    const config = loadConfig(productionApiEnv({
+        PAYMENTS_ENABLED: 'true',
+        PADDLE_API_KEY: '',
+        PADDLE_WEBHOOK_SECRET: '',
+        PADDLE_PRICE_SIGNAL: '',
+        PADDLE_PRICE_STUDIO: ''
+    }));
+    assert.throws(() => assertProductionConfig(config), /PADDLE_API_KEY.*PADDLE_WEBHOOK_SECRET.*PADDLE_PRICE_SIGNAL.*PADDLE_PRICE_STUDIO/);
 });
 
 test('production runtime cannot disable privileged WebAuthn enforcement', () => {

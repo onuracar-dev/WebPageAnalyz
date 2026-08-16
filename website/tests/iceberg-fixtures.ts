@@ -25,8 +25,8 @@ export const legalConfig = {
   documents: Object.fromEntries([
     ['terms', 'terms'], ['privacy', 'privacy'], ['kvkk', 'kvkk'], ['acceptableUse', 'acceptable_use'], ['refund', 'refund'], ['subprocessors', 'subprocessors'], ['targetAuthorization', 'target_authorization'],
   ].map(([key, id]) => [key, { id, version: '1.0', path: `/${key === 'acceptableUse' ? 'acceptable-use' : key}` }])),
-  billing: { provider: 'paddle', merchantOfRecord: 'Paddle', enterpriseSalesMode: 'contact', recurring: true, termsPath: '/terms', refundPath: '/refund', cancellationPath: '/app/settings/billing' },
-  subprocessors: [{ provider: 'Paddle', purpose: 'Merchant-of-record billing and buyer support', dataCategories: ['billing identifiers', 'transaction state'] }],
+  billing: { paymentsEnabled: false, mode: 'redeem_only', provider: 'paddle', merchantOfRecord: null, enterpriseSalesMode: 'contact', recurring: false, termsPath: '/terms', refundPath: '/refund', cancellationPath: '/app/settings/billing' },
+  subprocessors: [{ provider: 'Resend', purpose: 'Transactional email delivery', dataCategories: ['recipient email', 'delivery state'] }],
 };
 
 export const labRun = {

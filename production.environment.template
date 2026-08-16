@@ -73,7 +73,9 @@ DATABASE_SSLMODE=require
 MIGRATION_DATABASE_SSLMODE=require
 MIGRATION_REQUIRE_TLS=true
 DATABASE_SSL_REJECT_UNAUTHORIZED=true
-# Production billing. Enterprise remains contact/invite-only at launch.
+# Early-access launch: Free signup plus redeem/admin grants, with no provider
+# checkout. Change to true only after the complete Paddle block is configured.
+PAYMENTS_ENABLED=false
 BILLING_PROVIDER=paddle
 ENTERPRISE_SALES_MODE=contact
 PADDLE_ENVIRONMENT=sandbox

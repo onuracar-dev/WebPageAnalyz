@@ -963,6 +963,7 @@ export default function UserDashboard() {
       : dashboard?.plan.id === "studio"
         ? "enterprise"
         : null;
+  const paymentsEnabled = legalConfig?.billing?.paymentsEnabled === true;
   const currentPlanRank = ({ free: 0, signal: 1, studio: 2, enterprise: 3 } as Record<string, number>)[dashboard?.plan.id || "free"] ?? 0;
   const canExportReports = currentPlanRank >= 1;
   const canCompareReports = currentPlanRank >= 2;
@@ -989,7 +990,7 @@ export default function UserDashboard() {
       <small>Monthly page-credit usage</small>
       {upgradeTarget ? (
         <button onClick={() => void openCheckout(upgradeTarget)}>
-          {upgradeTarget === "enterprise" ? "Contact sales" : "Upgrade plan"} <ArrowRight />
+          {upgradeTarget === "enterprise" ? "Contact sales" : paymentsEnabled ? "Upgrade plan" : "Redeem access"} <ArrowRight />
         </button>
       ) : (
         <span className="plan-max">
@@ -1088,6 +1089,11 @@ export default function UserDashboard() {
       setError("This plan is not available through self-serve checkout.");
       return;
     }
+    if (!paymentsEnabled) {
+      navigate("/app/settings/billing");
+      setMessage("Paid checkout is paused during early access. Enter a WebPageAnalyz redeem code or use an administrator invitation.");
+      return;
+    }
     setActionBusy(true);
     setError("");
     setCheckoutError("");
@@ -1111,6 +1117,10 @@ export default function UserDashboard() {
   async function confirmCheckout(event: FormEvent) {
     event.preventDefault();
     if (!checkoutPlan || !checkoutAccepted) return;
+    if (!paymentsEnabled) {
+      setCheckoutError("Paid checkout is disabled during redeem-only early access.");
+      return;
+    }
     const termsVersion = legalConfig?.documents?.terms?.version;
     const refundPolicyVersion = legalConfig?.documents?.refund?.version;
     if (!legalConfig?.ready || !termsVersion || !refundPolicyVersion || !legalConfig.billing?.merchantOfRecord) {
@@ -1141,6 +1151,10 @@ export default function UserDashboard() {
     }
   }
   async function manageBilling() {
+    if (!paymentsEnabled) {
+      setMessage("The provider billing portal is unavailable during redeem-only early access.");
+      return;
+    }
     setActionBusy(true);
     setError("");
     try {
@@ -2521,15 +2535,21 @@ export default function UserDashboard() {
             {settingsSection === "billing" && <div className="settings-panel settings-panel--billing">
               <header><Boxes /><div><h2>Plan and billing</h2><p>Your current entitlement and subscription path.</p></div></header>
               <div className="settings-plan">
-                <div><span>CURRENT PLAN</span><b>{dashboard.plan.name}</b><small>{settingsData?.subscription ? `${legalConfig?.billing?.merchantOfRecordName || legalConfig?.billing?.provider || "Billing provider"} subscription · ${settingsData.subscription.status}` : "Free or operator-assigned entitlement"}</small></div>
+                <div><span>CURRENT PLAN</span><b>{dashboard.plan.name}</b><small>{!paymentsEnabled ? "Free, redeemed or operator-assigned early access" : settingsData?.subscription ? `${legalConfig?.billing?.merchantOfRecordName || legalConfig?.billing?.provider || "Billing provider"} subscription · ${settingsData.subscription.status}` : "Free or operator-assigned entitlement"}</small></div>
                 <strong>${dashboard.plan.id === "free" ? 0 : dashboard.plan.id === "signal" ? 29 : dashboard.plan.id === "studio" ? 99 : 349}<small>{dashboard.plan.id === "enterprise" ? "/month · invitation" : "/month"}</small></strong>
               </div>
               <dl><div><dt>Page credits</dt><dd>{dashboard.plan.limits.pageCredits}</dd></div><div><dt>Projects</dt><dd>{dashboard.plan.limits.projects}</dd></div><div><dt>Used this period</dt><dd>{dashboard.usage.consumed + dashboard.usage.reserved}</dd></div></dl>
-              {settingsData?.subscription ? <button className="settings-panel__action" onClick={() => void manageBilling()} disabled={actionBusy}>Open billing portal <ExternalLink /></button> : upgradeTarget ? <button className="settings-panel__action" onClick={() => void openCheckout(upgradeTarget)} disabled={actionBusy}>{upgradeTarget === "enterprise" ? "Contact sales" : "Upgrade plan"} <ArrowRight /></button> : <span className="settings-panel__max"><CheckCircle2 /> Highest plan active</span>}
+              {!paymentsEnabled && settingsData?.subscription
+                ? <span className="settings-panel__max"><CheckCircle2 /> Provider billing paused during early access</span>
+                : settingsData?.subscription
+                  ? <button className="settings-panel__action" onClick={() => void manageBilling()} disabled={actionBusy}>Open billing portal <ExternalLink /></button>
+                  : upgradeTarget
+                    ? <button className="settings-panel__action" onClick={() => void openCheckout(upgradeTarget)} disabled={actionBusy}>{upgradeTarget === "enterprise" ? "Contact sales" : paymentsEnabled ? "Upgrade plan" : "Redeem access"} <ArrowRight /></button>
+                    : <span className="settings-panel__max"><CheckCircle2 /> Highest plan active</span>}
               <form className="billing-redeem" onSubmit={redeemEntitlement}>
                 <div>
                   <label htmlFor="workspace-redeem-code">Redeem code</label>
-                  <p>Apply a code supplied by WebPageAnalyz. A valid code may add a temporary plan or credits without changing a paid subscription.</p>
+                  <p>{paymentsEnabled ? "Apply a code supplied by WebPageAnalyz. A valid code may add a temporary plan or credits without changing a paid subscription." : "Paid checkout is paused. Apply a WebPageAnalyz code for temporary plan access or credits."}</p>
                 </div>
                 <div className="billing-redeem__controls">
                   <input
@@ -2616,7 +2636,7 @@ export default function UserDashboard() {
         </section>
       )}
 
-      {checkoutPlan && <div className="checkout-confirmation">
+      {paymentsEnabled && checkoutPlan && <div className="checkout-confirmation">
         <button type="button" className="checkout-confirmation__backdrop" aria-label="Close checkout confirmation" onClick={closeCheckout} />
         <section className="checkout-confirmation__dialog" role="dialog" aria-modal="true" aria-labelledby="checkout-confirmation-title">
           <header><div><span>CHECKOUT CONFIRMATION</span><h2 id="checkout-confirmation-title">Review the recurring purchase.</h2></div><button ref={checkoutCloseRef} type="button" onClick={closeCheckout} disabled={checkoutLoading} aria-label="Close checkout confirmation">Close</button></header>

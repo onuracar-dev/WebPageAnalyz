@@ -19,7 +19,7 @@ WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, bounded discovery, an
 - Crawler route/referrer evidence, Visual UX viewport rectangles and versioned Source Audit results
 - TR/EN JSON and server-rendered PDF export
 - Separate customer and 2FA-protected administrator portals
-- A real Free entitlement state plus Paddle checkout, signed webhook reconciliation, cancellation and buyer-portal access; Stripe remains an optional legacy adapter
+- A real Free entitlement state plus redeem/admin early access; the retained Paddle checkout, signed webhook, cancellation and buyer-portal adapter is activated only when `PAYMENTS_ENABLED=true`
 - Resend-backed verification, password-reset and transactional notifications through an isolated email service
 - Lazy-loaded report visualization to keep the initial frontend bundle smaller
 - Docker deployment with an Nginx same-origin API proxy
@@ -101,7 +101,7 @@ All options and conservative defaults are documented in [`backend/environment.te
 | `ADMIN_API_KEYS` | Separate non-browser automation keys for protected admin operations |
 | `BOOTSTRAP_ADMIN_EMAILS` | Exact existing account emails allowed to create the initial super-admin record |
 | `BETTER_AUTH_SECRET` | At least 32 random characters used only by the backend |
-| `BILLING_PROVIDER` / `PADDLE_*` | Production Paddle API/webhook credentials and fixed Signal/Studio price mappings |
+| `PAYMENTS_ENABLED` / `BILLING_PROVIDER` / `PADDLE_*` | `false` runs Free + redeem-only without Paddle secrets; paid mode requires the complete Paddle API/webhook and Signal/Studio mapping contract |
 | `AI_SERVICE_TOKEN` / `OPENROUTER_*` | Internal AI authentication plus server-side OpenRouter key, attribution and deployment-time model chain |
 | `EMAIL_SERVICE_TOKEN` / `RESEND_API_KEY` / `EMAIL_FROM` | Internal email authentication and verified Resend sender |
 | `MAX_CONCURRENT_ANALYSES` / `MAX_QUEUED_ANALYSES` | Bounded local work queue |
@@ -186,7 +186,7 @@ Most backend tests inject analyzer, DNS, and AI doubles and do not contact exter
 - Without PostgreSQL the development fallback queue and store are intentionally ephemeral; production requires PostgreSQL.
 - Email verification/reset code is wired to Resend, but the real sender domain, SPF/DKIM and live delivery must be verified before launch.
 - Public legal documents fail closed until the operator identity/address/effective date are supplied. Their jurisdiction-specific wording still requires operator/legal review before accepting live revenue.
-- Paddle, OpenRouter, DNS/TLS, an external uptime monitor, and restore drills require real external configuration; repository tests do not prove those live systems.
+- Paddle is intentionally optional while `PAYMENTS_ENABLED=false`; enabling paid billing still requires real provider configuration and acceptance. OpenRouter, DNS/TLS, an external uptime monitor, and restore drills require real external configuration; repository tests do not prove those live systems.
 - A successful automated scan is not a security, accessibility, legal, or compliance certification.
 
 Security reports can be sent to the private contact channel listed on the live website.

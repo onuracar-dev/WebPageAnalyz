@@ -44,6 +44,8 @@ export type PublicLegalConfig = {
   documents?: Record<string, LegalDocumentConfig>;
   subprocessors?: SubprocessorConfig[];
   billing?: {
+    paymentsEnabled?: boolean;
+    mode?: 'paid' | 'redeem_only' | string;
     provider?: string;
     merchantOfRecord?: boolean | string | null;
     merchantOfRecordName?: string;
@@ -152,6 +154,7 @@ function OperatorIdentity({ operator }: { operator: OperatorConfig }) {
 
 function Terms({ config }: { config: PublicLegalConfig }) {
   const operator = config.operator || {};
+  const paymentsEnabled = config.billing?.paymentsEnabled !== false;
   const merchant = config.billing?.merchantOfRecordName || config.billing?.provider;
   return <>
     <h2>The agreement and the service</h2>
@@ -161,8 +164,10 @@ function Terms({ config }: { config: PublicLegalConfig }) {
     <ul><li>Keep account credentials and recovery links secure and provide accurate account information.</li><li>Submit only websites, subdomains, source packages and journey steps that you own or have explicit permission to test.</li><li>Target authorization is recorded separately from DNS verification. DNS verification unlocks ownership-only engines but never replaces your permission obligation.</li></ul>
     <h3>Automated analysis boundaries</h3>
     <p>Results may combine measured signals, automated checks and heuristic or AI-suggested remediation. They can be partial, delayed, unavailable or incorrect and are not accessibility certification, penetration-test certification, legal advice, or a guarantee of security. Review evidence and suggestions before relying on or applying them. Expert Review is a separately assigned human workflow and is not guaranteed by a plan name alone.</p>
-    <h3>Plans, recurring billing and cancellation</h3>
-    <p>Free access is bounded. Signal and Studio are self-serve recurring subscriptions; Enterprise is contact and invitation only. Before a paid checkout opens, WPA shows the server-confirmed plan, price, currency and interval and requires acknowledgement of recurring billing, these Terms and the Refund Policy. {merchant ? `${merchant} acts as the merchant of record for configured paid checkout.` : 'The configured checkout must identify its merchant of record before a purchase can start.'} Cancellation stops renewal at the end of the current paid period unless the checkout or mandatory law states otherwise.</p>
+    <h3>Plans, access and billing</h3>
+    {paymentsEnabled
+      ? <p>Free access is bounded. Signal and Studio are self-serve recurring subscriptions; Enterprise is contact and invitation only. Before a paid checkout opens, WPA shows the server-confirmed plan, price, currency and interval and requires acknowledgement of recurring billing, these Terms and the Refund Policy. {merchant ? `${merchant} acts as the merchant of record for configured paid checkout.` : 'The configured checkout must identify its merchant of record before a purchase can start.'} Cancellation stops renewal at the end of the current paid period unless the checkout or mandatory law states otherwise.</p>
+      : <p>Free access is bounded. During redeem-only early access, paid checkout and recurring billing are disabled. Signal and Studio prices remain product positioning, while access is supplied only through a valid redeem code or an operator-assigned temporary grant. Enterprise remains contact and invitation only.</p>}
     <h3>Credits, temporary grants and redeem codes</h3>
     <p>Page and AI credits are service-use counters, not money, stored value or transferable property. Bonus credits, redeem-code benefits and operator-assigned entitlements are governed by their recorded scope, limits and expiry. A temporary grant does not rewrite the underlying paid subscription, and an expired, disabled, exhausted or already-used code does not create continuing access.</p>
     <h3>Your targets, content and source packages</h3>
@@ -233,11 +238,20 @@ function AcceptableUse() {
 
 function Refund({ config }: { config: PublicLegalConfig }) {
   const billing = config.billing || {};
+  const paymentsEnabled = billing.paymentsEnabled !== false;
   const buyerTerms = safeExternalUrl(billing.buyerTermsUrl) || 'https://www.paddle.com/legal/buyer-terms';
   const refundPolicy = safeExternalUrl(billing.refundPolicyUrl) || 'https://www.paddle.com/legal/refund-policy';
   const buyerSupport = safeExternalUrl(billing.buyerSupportUrl) || 'https://www.paddle.net/';
   const merchant = billing.merchantOfRecordName || billing.provider;
   const cancellationPath = safeInternalPath(billing.cancellationPath, '/app/settings/billing');
+  if (!paymentsEnabled) return <>
+    <h2>Redeem-only early access</h2>
+    <p>WebPageAnalyz is not accepting paid checkout while this mode is active. Free accounts, redeem codes and operator-assigned temporary access remain available; no recurring purchase is started by applying a code or receiving a grant.</p>
+    <h3>When paid billing is enabled later</h3>
+    <p>Before accepting payment, the service will show the server-confirmed price, interval, merchant of record, cancellation route and applicable buyer/refund terms. This page does not promise that paid checkout is currently available.</p>
+    <h3>How to request help</h3>
+    <p>Contact <a href={`mailto:${config.operator?.supportEmail}`}>{config.operator?.supportEmail}</a> for Free, redeem-code or operator-grant access questions.</p>
+  </>;
   return <>
     <h2>Recurring subscriptions and cancellation</h2>
     <p>Signal and Studio are recurring subscriptions. The confirmation step shows the server-confirmed amount, currency and billing interval before checkout. You can start cancellation from <a href={cancellationPath}>workspace billing settings</a> or the configured buyer portal; cancellation normally stops renewal and access continues until the end of the current paid period unless mandatory law or the checkout states otherwise. Enterprise is contact and invitation only.</p>
@@ -288,7 +302,8 @@ export default function LegalContent({ kind }: { kind: LegalKind }) {
 
   const document = config?.documents?.[DOCUMENT_KEY[kind]];
   const operator = config?.operator;
-  const billingReady = Boolean(config?.billing?.merchantOfRecord && (config.billing.merchantOfRecordName || config.billing.provider));
+  const billingReady = config?.billing?.paymentsEnabled === false
+    || Boolean(config?.billing?.merchantOfRecord && (config.billing.merchantOfRecordName || config.billing.provider));
   const ready = Boolean(config?.ready && operator?.legalName && operator.address && operator.country && operator.supportEmail && operator.privacyEmail && document?.version && document.effectiveAt && (!['terms', 'refund'].includes(kind) || billingReady));
   const heading = TITLES[kind];
   const meta = useMemo(() => ready ? `Version ${document?.version} · effective ${readableDate(document?.effectiveAt)}` : 'Deployment configuration required', [document?.effectiveAt, document?.version, ready]);

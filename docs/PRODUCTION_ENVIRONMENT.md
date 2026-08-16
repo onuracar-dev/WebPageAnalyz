@@ -67,16 +67,24 @@ value rather than asking the operator to type it.
 
 | Name | Required | Secret | Safe example | Source and rotation | Used by |
 | --- | --- | --- | --- | --- | --- |
+| `PAYMENTS_ENABLED` | yes | no | `false` | Keep `false` for Free + redeem-only early access. Set `true` only when the complete paid-provider contract below is ready. | backend, public pricing/access state |
 | `BILLING_PROVIDER` | yes | no | `paddle` | Fixed launch provider; production rejects another default | backend |
 | `ENTERPRISE_SALES_MODE` | yes | no | `contact` | Operator fulfillment decision; `contact` or `invite_only` | backend, public catalog/legal config |
-| `PADDLE_ENVIRONMENT` | yes | no | `sandbox` then `production` | Paddle dashboard; change only after sandbox acceptance and live account approval | backend |
-| `PADDLE_API_KEY` | yes | yes | `<Paddle server API key>` | Paddle dashboard; rotate/revoke there, then restart backend | backend only |
-| `PADDLE_WEBHOOK_SECRET` | yes | yes | `<Paddle endpoint secret>` | Paddle notification destination; rotate with overlap/cutover plan | backend only |
-| `PADDLE_PRICE_SIGNAL` | yes | no | `pri_...` | Paddle catalog, monthly Signal price | backend only; public API returns catalog facts, never secret |
-| `PADDLE_PRICE_STUDIO` | yes | no | `pri_...` | Paddle catalog, monthly Studio price | backend only |
+| `PADDLE_ENVIRONMENT` | paid mode only | no | `sandbox` then `production` | Paddle dashboard; change only after sandbox acceptance and live account approval | backend |
+| `PADDLE_API_KEY` | paid mode only | yes | `<Paddle server API key>` | Required when `PAYMENTS_ENABLED=true`; rotate/revoke in Paddle, then restart backend | backend only |
+| `PADDLE_WEBHOOK_SECRET` | paid mode only | yes | `<Paddle endpoint secret>` | Required when `PAYMENTS_ENABLED=true`; rotate with overlap/cutover plan | backend only |
+| `PADDLE_PRICE_SIGNAL` | paid mode only | no | `pri_...` | Required when `PAYMENTS_ENABLED=true`; Paddle monthly Signal price | backend only; public API returns catalog facts, never secret |
+| `PADDLE_PRICE_STUDIO` | paid mode only | no | `pri_...` | Required when `PAYMENTS_ENABLED=true`; Paddle monthly Studio price | backend only |
 | `PADDLE_PRICE_ENTERPRISE` | no | no | empty | Leave empty while Enterprise is contact/invite-only | backend only |
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | no | yes | empty | Optional legacy/dev adapter credentials; rotate/revoke in Stripe if that adapter is deliberately used | none in launch topology |
 | `STRIPE_PRICE_SIGNAL` / `STRIPE_PRICE_STUDIO` / `STRIPE_PRICE_ENTERPRISE` | no | no | empty | Optional legacy/dev catalog identifiers; leave empty for the Paddle launch | none in launch topology |
+
+With `PAYMENTS_ENABLED=false`, production deliberately starts without Paddle
+credentials or price IDs. Checkout, portal, cancellation, reconciliation and
+webhook mutations return `PAYMENTS_DISABLED`; Free signup, redeem codes and
+administrator grants remain active. With `PAYMENTS_ENABLED=true`, the API keeps
+the existing fail-closed Paddle validation and refuses to start until every
+required server credential and Signal/Studio price mapping is present.
 
 ## EMAIL
 
