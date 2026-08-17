@@ -14,19 +14,22 @@ SELECT format('CREATE ROLE %I NOLOGIN NOINHERIT', :'owner_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'owner_role');
 \gexec
 
-SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'runtime_role', :'runtime_password')
+-- Conditional CREATE statements are rendered by psql before \gexec executes
+-- them, so they must never contain credentials. Password assignment and
+-- rotation happen separately through the direct ALTER ROLE statements below.
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', :'runtime_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'runtime_role');
 \gexec
-SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'migrator_role', :'migrator_password')
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', :'migrator_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'migrator_role');
 \gexec
-SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'worker_role', :'worker_password')
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', :'worker_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'worker_role');
 \gexec
-SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'maintenance_role', :'maintenance_password')
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', :'maintenance_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'maintenance_role');
 \gexec
-SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT PASSWORD %L', :'queue_role', :'queue_password')
+SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', :'queue_role')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'queue_role');
 \gexec
 

@@ -17,6 +17,8 @@ done
 
 export PGPASSWORD="${POSTGRES_ADMIN_PASSWORD}"
 exec psql \
+    --no-psqlrc \
+    --set=ECHO=none \
     --host="${POSTGRES_HOST}" \
     --port="${POSTGRES_PORT:-5432}" \
     --username="${POSTGRES_ADMIN_USER}" \
