@@ -1,0 +1,2 @@
+# Shell scripts execute on Linux hosts and inside Linux containers.
+*.sh text eol=lf
