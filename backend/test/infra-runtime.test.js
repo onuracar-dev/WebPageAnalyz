@@ -123,11 +123,25 @@ test('Compose keeps API secrets and hostile execution on different services', as
     assert.doesNotMatch(zap, /curl -fsS ['"]http:\/\/127\.0\.0\.1:8080[\s\S]*apikey=/);
 });
 
-test('PostgreSQL one-shot services share one configurable bootstrap administrator identity', async () => {
-    const compose = await fs.readFile(path.join(__dirname, '..', '..', 'docker-compose.yml'), 'utf8');
+test('PostgreSQL bootstrap readiness and runtime files use the canonical administrator credential', async () => {
+    const scriptsDir = path.join(__dirname, '..', 'scripts');
+    const compose = await fs.readFile(path.join(root, 'docker-compose.yml'), 'utf8');
+    const bootstrap = await fs.readFile(path.join(scriptsDir, 'bootstrap-roles.sh'), 'utf8');
     assert.equal((compose.match(/POSTGRES_ADMIN_USER: \$\{POSTGRES_ADMIN_USER:-postgres\}/g) || []).length, 2);
     assert.match(compose, /POSTGRES_USER: \$\{POSTGRES_ADMIN_USER:-postgres\}/);
     assert.match(compose, /pg_isready -U \\"\$\$\{POSTGRES_USER\}\\" -d \\"\$\$\{POSTGRES_DB\}\\"/);
+    assert.match(bootstrap, /^until PGPASSWORD="\$\{POSTGRES_ADMIN_PASSWORD\}" pg_isready\b/m);
+
+    const runtimeScriptFiles = (await fs.readdir(scriptsDir, { withFileTypes: true }))
+        .filter((entry) => entry.isFile() && /\.(?:js|sh|sql)$/.test(entry.name));
+    const runtimeSources = await Promise.all(runtimeScriptFiles.map((entry) => fs.readFile(path.join(scriptsDir, entry.name), 'utf8')));
+    runtimeSources.push(
+        compose,
+        await fs.readFile(path.join(root, 'docker-compose.local.yml'), 'utf8'),
+        await fs.readFile(path.join(root, 'production.environment.template'), 'utf8'),
+        await fs.readFile(path.join(__dirname, '..', 'environment.template'), 'utf8')
+    );
+    assert.doesNotMatch(runtimeSources.join('\n'), /\bPOSTGRES_ADMIN_PASSWOR\b/);
 });
 
 test('release workflow publishes the canonical website image and retains legacy frontend only for development', async () => {
