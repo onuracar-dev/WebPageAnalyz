@@ -225,4 +225,23 @@ test.describe('support surfaces against the current API contracts', () => {
     await expect(page.getByRole('alert')).toContainText(/legal configuration unavailable/i);
     await expect(page.getByText(/Northstar Test Yazilim/i)).toHaveCount(0);
   });
+
+  test('redeem-only legal pages stay ready without publishing an operator address', async ({ page }) => {
+    const addresslessConfig = {
+      ...productionLegalConfig,
+      operator: { ...productionLegalConfig.operator, businessAddress: undefined },
+      billing: { ...productionLegalConfig.billing, paymentsEnabled: false, mode: 'redeem_only' },
+    };
+    await page.route('**/api/v1/legal/config', (route) => json(route, addresslessConfig));
+
+    await page.goto('/terms');
+    await expect(page.getByText(/Version 1\.0/i).first()).toBeVisible();
+    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.locator('.aux-legal__identity dt').filter({ hasText: 'Address' })).toHaveCount(0);
+    await expect(page.getByText(/Test Mahallesi/i)).toHaveCount(0);
+
+    await page.goto('/kvkk');
+    await expect(page.getByText(/Ülke: Türkiye/i)).toBeVisible();
+    await expect(page.getByText(/Adres:/i)).toHaveCount(0);
+  });
 });

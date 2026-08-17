@@ -211,7 +211,7 @@ function Kvkk({ config }: { config: PublicLegalConfig }) {
   const contact = operator.kvkkContactEmail || operator.privacyEmail;
   return <>
     <h2>1. Veri sorumlusu</h2>
-    <p>6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında veri sorumlusu {operator.legalName}’dir. Adres: {operator.address}, {operator.country}. KVKK başvuruları için: <a href={`mailto:${contact}`}>{contact}</a>.</p>
+    <p>6698 sayılı Kişisel Verilerin Korunması Kanunu kapsamında veri sorumlusu {operator.legalName}’dir. {operator.address ? <>Adres: {operator.address}, {operator.country}.</> : <>Ülke: {operator.country}.</>} KVKK başvuruları için: <a href={`mailto:${contact}`}>{contact}</a>.</p>
     <h3>2. İşlenen kişisel veriler</h3>
     <p>Kimlik ve iletişim bilgileri; hesap, oturum, IP ve kullanıcı aracısı gibi işlem güvenliği verileri; çalışma alanı ve hedef yetkilendirme kayıtları; tarama, rapor, bulgu ve destek içerikleri; abonelik/işlem durumu; seçilen entegrasyonlara ait yapılandırma ve denetim kayıtları işlenebilir.</p>
     <h3>3. İşleme amaçları ve hukuki sebepler</h3>
@@ -304,7 +304,8 @@ export default function LegalContent({ kind }: { kind: LegalKind }) {
   const operator = config?.operator;
   const billingReady = config?.billing?.paymentsEnabled === false
     || Boolean(config?.billing?.merchantOfRecord && (config.billing.merchantOfRecordName || config.billing.provider));
-  const ready = Boolean(config?.ready && operator?.legalName && operator.address && operator.country && operator.supportEmail && operator.privacyEmail && document?.version && document.effectiveAt && (!['terms', 'refund'].includes(kind) || billingReady));
+  const addressReady = config?.billing?.paymentsEnabled === false || Boolean(operator?.address);
+  const ready = Boolean(config?.ready && operator?.legalName && addressReady && operator.country && operator.supportEmail && operator.privacyEmail && document?.version && document.effectiveAt && (!['terms', 'refund'].includes(kind) || billingReady));
   const heading = TITLES[kind];
   const meta = useMemo(() => ready ? `Version ${document?.version} · effective ${readableDate(document?.effectiveAt)}` : 'Deployment configuration required', [document?.effectiveAt, document?.version, ready]);
 

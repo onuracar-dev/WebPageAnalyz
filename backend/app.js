@@ -565,7 +565,9 @@ function createApp(options = {}) {
     app.use('/api/v1/scans/:id/events', scanProgressLimiter);
     app.use('/api', generalLimiter);
     app.get('/api/v1/legal/config', (_request, response) => {
-        const operatorReady = Boolean(config.legal.operatorName && config.legal.country && config.legal.businessAddress && config.legal.supportEmail && config.legal.effectiveDate && config.legal.hostingProviderName);
+        const paymentsEnabled = paymentsAreEnabled(config);
+        const addressReady = !paymentsEnabled || Boolean(config.legal.businessAddress);
+        const operatorReady = Boolean(config.legal.operatorName && config.legal.country && addressReady && config.legal.supportEmail && config.legal.effectiveDate && config.legal.hostingProviderName);
         const subprocessors = [
             {
                 provider: config.legal.hostingProviderName,
@@ -597,7 +599,7 @@ function createApp(options = {}) {
                 name: config.legal.operatorName,
                 type: config.legal.operatorType || null,
                 country: config.legal.country,
-                businessAddress: config.legal.businessAddress,
+                ...(config.legal.businessAddress ? { businessAddress: config.legal.businessAddress } : {}),
                 supportEmail: config.legal.supportEmail,
                 supportPhone: config.legal.supportPhone || null,
                 effectiveDate: config.legal.effectiveDate
@@ -606,11 +608,11 @@ function createApp(options = {}) {
             subprocessors,
             billing: {
                 provider: config.billing.provider,
-                paymentsEnabled: paymentsAreEnabled(config),
-                mode: paymentsAreEnabled(config) ? 'paid' : 'redeem_only',
-                merchantOfRecord: paymentsAreEnabled(config) && config.billing.provider === 'paddle' ? 'Paddle' : null,
+                paymentsEnabled,
+                mode: paymentsEnabled ? 'paid' : 'redeem_only',
+                merchantOfRecord: paymentsEnabled && config.billing.provider === 'paddle' ? 'Paddle' : null,
                 enterpriseSalesMode: config.billing.enterpriseSalesMode,
-                recurring: paymentsAreEnabled(config),
+                recurring: paymentsEnabled,
                 termsPath: '/terms',
                 refundPath: '/refund',
                 cancellationPath: '/app/settings/billing'

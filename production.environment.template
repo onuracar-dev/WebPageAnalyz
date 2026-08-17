@@ -117,7 +117,8 @@ EMAIL_PROVIDER_HOST_ALLOWLIST=api.resend.com
 EMAIL_PROVIDER_TIMEOUT_MS=10000
 
 # Published operator data. Production startup fails rather than rendering
-# invented or placeholder legal identity.
+# invented or placeholder legal identity. A real business address is required
+# when PAYMENTS_ENABLED=true and optional in redeem-only early access.
 LEGAL_OPERATOR_NAME=
 LEGAL_OPERATOR_TYPE=
 LEGAL_COUNTRY=TR

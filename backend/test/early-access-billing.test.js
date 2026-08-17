@@ -16,7 +16,12 @@ function earlyAccessConfig() {
         CORS_ORIGINS: 'https://dashboard.example',
         RATE_LIMIT_MAX: '1000',
         ADMIN_RATE_LIMIT_MAX: '1000',
-        WORKER_ENABLED: 'false'
+        WORKER_ENABLED: 'false',
+        LEGAL_OPERATOR_NAME: 'Configured Operator',
+        LEGAL_COUNTRY: 'TR',
+        LEGAL_SUPPORT_EMAIL: 'support@example.test',
+        LEGAL_EFFECTIVE_DATE: '2026-08-17',
+        LEGAL_HOSTING_PROVIDER_NAME: 'Configured VDS Provider'
     });
 }
 
@@ -141,6 +146,10 @@ test('disabled public legal configuration advertises redeem-only access and no P
     assert.equal(response.body.billing.mode, 'redeem_only');
     assert.equal(response.body.billing.merchantOfRecord, null);
     assert.equal(response.body.billing.recurring, false);
+    assert.equal(response.body.ready, true);
+    assert.equal(response.body.operator.name, 'Configured Operator');
+    assert.equal(Object.hasOwn(response.body.operator, 'businessAddress'), false);
+    assert.equal(Object.hasOwn(response.body.operator, 'address'), false);
     assert.equal(response.body.subprocessors.some((entry) => entry.provider === 'Paddle'), false);
 });
 

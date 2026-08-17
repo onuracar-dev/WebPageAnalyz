@@ -34,6 +34,7 @@ test('production runtime accepts explicit durable storage and strong secrets', (
 test('production early access accepts disabled payments without Paddle credentials', () => {
     const config = loadConfig(productionApiEnv({
         PAYMENTS_ENABLED: 'false',
+        LEGAL_BUSINESS_ADDRESS: '',
         PADDLE_API_KEY: '',
         PADDLE_WEBHOOK_SECRET: '',
         PADDLE_PRICE_SIGNAL: '',
@@ -41,7 +42,28 @@ test('production early access accepts disabled payments without Paddle credentia
         PADDLE_PRICE_ENTERPRISE: ''
     }));
     assert.equal(config.billing.paymentsEnabled, false);
+    assert.equal(config.legal.businessAddress, '');
     assert.equal(assertProductionConfig(config), config);
+});
+
+test('production paid billing still requires an operator-supplied business address', () => {
+    const config = loadConfig(productionApiEnv({ LEGAL_BUSINESS_ADDRESS: '' }));
+    assert.throws(() => assertProductionConfig(config), /LEGAL_BUSINESS_ADDRESS/);
+});
+
+test('production early access still requires every non-address legal identity field', () => {
+    for (const name of ['LEGAL_OPERATOR_NAME', 'LEGAL_COUNTRY', 'LEGAL_SUPPORT_EMAIL', 'LEGAL_EFFECTIVE_DATE', 'LEGAL_HOSTING_PROVIDER_NAME']) {
+        const config = loadConfig(productionApiEnv({
+            PAYMENTS_ENABLED: 'false',
+            LEGAL_BUSINESS_ADDRESS: '',
+            PADDLE_API_KEY: '',
+            PADDLE_WEBHOOK_SECRET: '',
+            PADDLE_PRICE_SIGNAL: '',
+            PADDLE_PRICE_STUDIO: '',
+            [name]: ''
+        }));
+        assert.throws(() => assertProductionConfig(config), new RegExp(name));
+    }
 });
 
 test('production paid billing still fails closed when Paddle configuration is missing', () => {

@@ -182,7 +182,7 @@ emitted through structured container logs.
 | `LEGAL_OPERATOR_NAME` | yes | no | `<actual operator name>` | Operator-approved factual identity; update only when legally changed | backend public legal config, website |
 | `LEGAL_OPERATOR_TYPE` | no | no | `<actual type or empty>` | Never invent a company type | backend public legal config, website |
 | `LEGAL_COUNTRY` | yes | no | `TR` | Actual operator jurisdiction | backend public legal config, website |
-| `LEGAL_BUSINESS_ADDRESS` | yes | personal/business | `<actual service address>` | Operator-approved factual address | backend public legal config, website |
+| `LEGAL_BUSINESS_ADDRESS` | paid mode only | personal/business | `<actual service address or empty in redeem-only mode>` | Operator-approved factual address; required when `PAYMENTS_ENABLED=true`, omitted from public config when unset during redeem-only early access | backend public legal config, website |
 | `LEGAL_SUPPORT_EMAIL` | yes | limited personal | `support@usewpa.tech` | Actual support/privacy contact | backend public legal config, website |
 | `LEGAL_SUPPORT_PHONE` | no | personal | empty | Publish only when operator chooses a real number | backend public legal config, website |
 | `LEGAL_EFFECTIVE_DATE` | yes | no | `2026-08-15` | Publication date for v1 documents | backend public legal config, website |

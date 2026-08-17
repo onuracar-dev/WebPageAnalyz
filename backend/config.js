@@ -86,7 +86,6 @@ function assertProductionConfig(config) {
         ['EMAIL_SERVICE_TOKEN', config.email.internalToken, 32],
         ['LEGAL_OPERATOR_NAME', config.legal.operatorName, 1],
         ['LEGAL_COUNTRY', config.legal.country, 2],
-        ['LEGAL_BUSINESS_ADDRESS', config.legal.businessAddress, 5],
         ['LEGAL_SUPPORT_EMAIL', config.legal.supportEmail, 3],
         ['LEGAL_EFFECTIVE_DATE', config.legal.effectiveDate, 8],
         ['LEGAL_HOSTING_PROVIDER_NAME', config.legal.hostingProviderName, 2]
@@ -116,6 +115,7 @@ function assertProductionConfig(config) {
     if (['api', 'ai'].includes(config.executionRole) && config.ai.dailyCostSoftLimitUsd > config.ai.dailyCostHardLimitUsd) throw new Error('AI_DAILY_COST_SOFT_LIMIT_USD must not exceed AI_DAILY_COST_HARD_LIMIT_USD.');
     if (!['contact', 'invite_only'].includes(config.billing.enterpriseSalesMode)) throw new Error('ENTERPRISE_SALES_MODE must be contact or invite_only in production.');
     if (config.executionRole === 'api' && config.billing.paymentsEnabled) required.push(
+        ['LEGAL_BUSINESS_ADDRESS', config.legal.businessAddress, 5],
         ['PADDLE_API_KEY', config.billing.paddle.apiKey, 16],
         ['PADDLE_WEBHOOK_SECRET', config.billing.paddle.webhookSecret, 16],
         ['PADDLE_PRICE_SIGNAL', config.billing.paddle.prices.signal, 3],
