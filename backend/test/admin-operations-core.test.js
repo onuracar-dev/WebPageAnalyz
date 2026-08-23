@@ -41,7 +41,7 @@ test('manual credits and entitlements expire automatically and audit metadata is
     assert.equal(creditAudit.requestId, 'req_credit');
     assert.equal(creditAudit.metadata.creditType, 'page');
     assert.equal(creditAudit.metadata.amount, 25);
-    const grant = await store.grantEntitlement('ws_grants', { temporaryPlanId: 'studio', entitlementOverrides: { api_webhooks: { executionMode: 'automated' } }, expiresAt: '2026-09-01T00:00:00.000Z' }, { actorId: 'admin_1', reason: 'pilot', requestId: 'req_grant' });
+    const grant = await store.grantEntitlement('ws_grants', { temporaryPlanId: 'studio', entitlementOverrides: { api_webhooks: { executionMode: 'automated' } }, startsAt: '2026-08-01T00:00:00.000Z', expiresAt: '2026-09-01T00:00:00.000Z' }, { actorId: 'admin_1', reason: 'pilot', requestId: 'req_grant' });
     assert.equal((await store.getEffectiveEntitlements('ws_grants', new Date('2026-08-20'))).limits.pageCredits, 175);
     assert.equal((await store.getEffectiveEntitlements('ws_grants', new Date('2026-09-02'))).effectivePlanId, 'free');
     await store.logAudit({ action: 'test.redaction', entityType: 'test', metadata: { apiKey: 'sk_secret', nested: { password: 'never-store', safe: 'ok' } } });
