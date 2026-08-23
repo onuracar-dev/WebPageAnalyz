@@ -50,7 +50,6 @@ function createDeadline(signal, timeoutMs) {
         timedOut = true;
         controller.abort(new DOMException('AI provider timeout', 'TimeoutError'));
     }, timeoutMs);
-    timer.unref?.();
     return {
         signal: controller.signal,
         timedOut: () => timedOut,

@@ -54,7 +54,6 @@ function waitForOperationCleanup(operation, milliseconds = ANALYZER_CLEANUP_GRAC
             resolve(value);
         };
         const timer = setTimeout(() => finish(false), milliseconds);
-        timer.unref?.();
         Promise.resolve(operation).then(() => finish(true), () => finish(true));
     });
 }

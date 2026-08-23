@@ -180,8 +180,8 @@ test('analysis service serializes browser-heavy analyzers while preserving exter
 test('browser-heavy lane waits for timed-out analyzer cleanup before starting the next browser', async () => {
     let cleanupFinishedAt = 0;
     let wpaStartedAt = 0;
-    const localConfig = config();
-    localConfig.timeouts = { ...localConfig.timeouts, axeMs: 20, wpaPageMs: 500 };
+    const baseConfig = config();
+    const localConfig = { ...baseConfig, timeouts: { ...baseConfig.timeouts, axeMs: 20, wpaPageMs: 500 } };
     const service = createAnalysisService({
         config: localConfig,
         logger: silentLogger,

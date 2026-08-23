@@ -49,7 +49,6 @@ function runWithTimeout(task, milliseconds, label, parentSignal) {
             controller.abort(error);
             settle(reject, error);
         }, milliseconds);
-        timer.unref?.();
 
         Promise.resolve()
             .then(() => task(controller.signal))

@@ -68,7 +68,6 @@ function createResendProvider({ apiKey, from, appUrl, supportEmail = '', timeout
             if (context.signal?.aborted) abortFromCaller();
             else context.signal?.addEventListener?.('abort', abortFromCaller, { once: true });
             const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
-            timer.unref?.();
             try {
                 const headers = {
                     Authorization: `Bearer ${apiKey}`,
