@@ -214,7 +214,10 @@ test.describe('support surfaces against the current API contracts', () => {
       await expect(page.getByText(/Version 1\.0/i).first()).toBeVisible();
       await expect(page.getByText(/DRAFT|COUNSEL-APPROVED/i)).toHaveCount(0);
       await expect(page.getByText('Northstar Test Yazilim Ltd. Sti.').first()).toBeVisible();
-      if (legalPath === '/refund') await expect(page.getByRole('link', { name: /workspace billing settings/i })).toHaveAttribute('href', '/app/settings/billing');
+      if (legalPath === '/refund') {
+        await expect(page.getByRole('heading', { name: /redeem-only early access/i })).toBeVisible();
+        await expect(page.getByRole('link', { name: /workspace billing settings/i })).toHaveCount(0);
+      }
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
     }
   });

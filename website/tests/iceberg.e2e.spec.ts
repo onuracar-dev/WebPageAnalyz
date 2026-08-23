@@ -410,7 +410,7 @@ test.describe('account and protected product routes', () => {
     await page.goto(`/app?target=${encodeURIComponent(target)}`);
     await page.goto('/login');
     await expect(page.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password');
-    await expect(page.getByRole('link', { name: 'Need support?' })).toHaveAttribute('href', /mailto:/);
+    await expect(page.getByRole('link', { name: 'Need support?' })).toHaveAttribute('href', '/contact');
     await page.goto('/app?target=https%3A%2F%2Fnorthstar.example%2Flanding');
     await expect(page.getByRole('heading', { name: 'Targets', exact: true })).toBeVisible();
     await expect(page.getByRole('dialog', { name: /target registry/i })).toBeVisible();

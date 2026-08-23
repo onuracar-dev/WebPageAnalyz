@@ -332,15 +332,20 @@ test.describe('admin operations v2', () => {
     await expect(page.getByRole('button', { name: 'Engine Test Lab' })).toHaveCount(0);
   });
 
-  test('admin UI permits operational commerce but does not expose privileged-role management', async ({ page }) => {
+  test('admin UI permits operational commerce but does not expose privileged-role management', async ({ page }, testInfo) => {
     const requests: RequestRecord[] = [];
     await installFixtures(page, requests, 'admin');
     await page.goto('/admin/users?user=user-2');
     const console = page.locator('.admin-operations');
     await expect(console.getByRole('button', { name: 'Ban user' })).toBeVisible();
     await expect(console.getByRole('button', { name: 'Record adjustment' })).toBeVisible();
-    await page.getByRole('button', { name: 'More admin sections' }).click();
-    await page.getByRole('menuitem', { name: 'Security' }).click();
+    if (['mobile', 'compact'].includes(testInfo.project.name)) {
+      await page.getByRole('button', { name: 'Open navigation' }).click();
+      await page.getByRole('dialog', { name: 'Admin navigation' }).getByRole('button', { name: 'Security' }).click();
+    } else {
+      await page.getByRole('button', { name: 'More admin sections' }).click();
+      await page.getByRole('menuitem', { name: 'Security' }).click();
+    }
     await expect(page.getByRole('heading', { name: 'Admin security' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Role and credential register' })).toHaveCount(0);
   });
