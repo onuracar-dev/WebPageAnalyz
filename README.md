@@ -2,9 +2,11 @@
 
 Production-oriented website audit platform with AI-assisted remediation.
 
-<img src="./docs/assets/preview.svg" alt="WebPage Analyzer dashboard preview">
+<a href="https://usewpa.tech/">
+  <img src="./docs/assets/usewpa-homepage.png" alt="WebPage Analyzer live website">
+</a>
 
-[Live website](https://webpage-analyzer.onuracar.dev/)
+[Live website](https://usewpa.tech/)
 
 WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, bounded discovery, and optional OpenRouter-backed remediation in one workflow. A user submits an authorized public target, the backend runs bounded audits through an SSRF-aware network boundary, and the React dashboard presents prioritized measured findings.
 
