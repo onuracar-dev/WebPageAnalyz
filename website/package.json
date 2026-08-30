@@ -15,29 +15,29 @@
     "test:plan-contract": "node tests/plan-contract.mjs"
   },
   "dependencies": {
-    "@better-auth/passkey": "1.6.26",
-    "better-auth": "1.6.26",
+    "@better-auth/passkey": "1.7.2",
+    "better-auth": "1.7.2",
     "gsap": "^3.15.0",
     "lenis": "^1.3.26",
-    "lucide-react": "0.474.0",
+    "lucide-react": "1.34.0",
     "qrcode.react": "4.2.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "optionalDependencies": {
-    "@rollup/rollup-linux-x64-gnu": "^4.0.0"
+    "@rollup/rollup-linux-x64-gnu": "^4.63.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@types/node": "^24.3.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.0",
     "autoprefixer": "^10.4.0",
-    "postcss": "^8.5.25",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   },
   "overrides": {
     "nanoid": "3.3.18"
