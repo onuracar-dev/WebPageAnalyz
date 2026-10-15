@@ -228,3 +228,60 @@ Revizyon 3 ve 4 doğrulandı: 42 test yeşil. UI üzerinden canlı `onuracar.dev
    - (c) Mevcut Revizyon 4 testleri hâlâ geçiyor.
 
 Bitti kriteri: `npm test` yeşil. `git status` sadece `lite/backend/` altında değişiklik gösteriyor. Canlı `https://onuracar.dev` taramasında hâlâ `www`'ye çözülüyor ve 7 motor `completed` (PORT=8099).
+
+---
+
+## Revizyon 6: İletişim formu API'si + Docker/deploy dosyaları (Claude, 2026-10-15)
+
+Revizyon 3-5 doğrulandı ve commit'lendi. Frontend'i Claude yazıyor: `/contact` sayfası aşağıdaki API'yi kullanacak. **`lite/web/src/` altına dokunma.** Çalışabileceğin yerler: `lite/backend/`, `lite/docker-compose.yml`, `lite/web/Dockerfile`, `lite/web/nginx.conf`, `lite/web/.dockerignore`, `lite/.env.example`, `lite/README.md`. Kopyalanan motor dosyalarına yine dokunma.
+
+### A. `POST /api/contact`
+
+İstek gövdesi (JSON, body limiti mevcut 10kb):
+```json
+{ "name": "Ada", "email": "ada@example.com", "topic": "Feedback", "message": "En az 20 karakterlik mesaj...", "website": "" }
+```
+- Doğrulama:
+  - `name` 1–100 karakter.
+  - `email` geçerli bir adres, en fazla 200 karakter.
+  - `topic` şunlardan biri: `Feedback`, `Bug report`, `Abuse report`, `Other`.
+  - `message` 20–2000 karakter.
+  - Hata olursa `400 CONTACT_INVALID` ve `{ error: { code, message, fields: { name?: string, email?: string, message?: string } } }`.
+- **Honeypot:** `website` doluysa mail gönderme, ama `202 { ok: true }` dön (bot fark etmesin).
+- **Limitler:** IP başına saatte 3 (`CONTACT_RATE_LIMIT_PER_HOUR`), global günlük 50 (`CONTACT_DAILY_LIMIT`). Aşılınca `429 CONTACT_RATE_LIMITED`. Tarama limitlerinden ayrı sayaçlar olsun.
+- **Gönderim:** Resend HTTP API'si (`https://api.resend.com/emails`), yeni bağımlılık ekleme, `fetch` yeter. Referans için `backend/email/resend-provider.js`'e bakabilirsin ama kopyalamak zorunda değilsin.
+  - `from`: `CONTACT_FROM` (varsayılan `WPA Lite <onboarding@resend.dev>`). Not: bu varsayılan gönderen, domain doğrulamadan sadece Resend hesabının sahibine mail atabilir. Bizim durumumuz tam bu.
+  - `to`: `CONTACT_TO` (env'den, kodda adres yazma).
+  - `reply_to`: kullanıcının e-postası.
+  - `subject`: `[WPA Lite] <topic> from <name>`. Name'deki CR/LF karakterlerini temizle (header injection), 80 karaktere kırp.
+  - Sadece **düz metin** gövde (`text`), HTML yok. Gövdede name, email, topic, message ve gönderim zamanı olsun.
+  - 8 sn timeout. Resend hata dönerse `502 CONTACT_FAILED`, sabit ve kısa bir mesajla. Ham sağlayıcı cevabı client'a gitmesin.
+- `RESEND_API_KEY` veya `CONTACT_TO` yoksa `503 CONTACT_DISABLED` (sunucu açılmaya devam etsin, sadece bu uç kapalı olsun). `GET /api/health`'e `contact: true/false` ekle.
+- **Log:** Sadece `{ event: 'contact', topic, at, ipHash }`. Mesaj içeriği, e-posta ve isim asla loglanmaz.
+- Başarılı → `202 { ok: true }`.
+- **Testler** (`fetch` mock'lanır, gerçek ağ yok): geçerli istek Resend'e doğru gövdeyle gidiyor (`reply_to`, düz metin, `to` env'den), honeypot mail atmıyor ama 202 dönüyor, doğrulama hataları `fields` ile dönüyor, CR/LF temizleniyor, rate limit 429, env eksikken 503, Resend hatası 502 ve ham hata sızmıyor, log'da mesaj/e-posta yok.
+
+### B. Docker ve deploy dosyaları
+
+1. **`lite/web/Dockerfile`:** Multi-stage. İlk aşamada `node` imajında `npm ci && npm run build`. İkinci aşamada `nginx:alpine` ile `dist/` sunuluyor, non-root çalışıyor (ör. `nginxinc/nginx-unprivileged`), port 8080. `lite/web/.dockerignore` ile `node_modules`, `dist`, `test-results`, `e2e` dışarıda.
+2. **`lite/web/nginx.conf`:**
+   - `try_files $uri /index.html` (`/terms`, `/about`, `/contact` için).
+   - `/api/` → `http://backend:8080` proxy. `X-Forwarded-For` ve `X-Forwarded-Proto` iletilsin. Proxy okuma timeout'u en az 30 sn olsun (POST /api/scans yönlendirme çözümü ~8 sn sürebiliyor).
+   - `client_max_body_size 16k`, gzip.
+   - Hash'li asset'ler (`/assets/`) için uzun süreli cache, `index.html` için `no-cache`.
+   - Güvenlik başlıkları: `X-Content-Type-Options`, `Referrer-Policy`, `X-Frame-Options DENY`, `Permissions-Policy`. **CSP** eklersen şunlara izin vermesi gerekiyor: `https://api.fontshare.com` (style), `https://cdn.fontshare.com` (font), `'self'` (script/connect). WebGL için ek bir izin gerekmiyor. Raporda CSP'yi yaz.
+3. **`lite/docker-compose.yml`:**
+   - Servisler: `backend` (mevcut Dockerfile) ve `web`.
+   - `backend` dışarıya port açmasın, sadece compose ağında olsun. `web` host'ta `127.0.0.1:${WEB_PORT:-8081}:8080` (TLS'i VDS'teki reverse proxy yapacak).
+   - İkisinde de: `restart: unless-stopped`, log rotasyonu (`max-size: 10m`, `max-file: 3`), `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, `pids_limit`.
+   - Backend'e `mem_limit` (ör. 1500m), `read_only: true` ve `/tmp` + artifact dizini için tmpfs.
+   - Backend `env_file: .env`, `TRUST_PROXY=1` (nginx arkasında).
+4. **`lite/.env.example`:** `NODE_ENV=production`, `CONSENT_SALT=` (uzun rastgele değer nasıl üretilir: `openssl rand -hex 32`), `ALLOWED_ORIGIN=https://webpageanalyzer.onuracar.dev`, `TRUST_PROXY=1`, `RESEND_API_KEY=`, `CONTACT_TO=` (boş bırak, gerçek adres repoya girmez), `CONTACT_FROM=`, `WEB_PORT=8081`. `lite/.gitignore`'a `.env` ekli olsun.
+5. **Docker testi:** Onur Docker Desktop kuracak. Kurulunca:
+   - `docker compose -f lite/docker-compose.yml up --build`
+   - `http://localhost:8081` üzerinden `https://example.com` taraması yap.
+   - **Chromium sandbox:** Önce `CHROME_NO_SANDBOX` olmadan dene. Hata alırsan hatayı rapora yaz. `--no-sandbox`'a geçmeden önce seccomp/cap seçeneklerini dene ve hangisinin işe yaradığını açıkla.
+   - Raporda: 7 motorun status'u, container RAM kullanımı (`docker stats`, ölçülmüş değer), `docker compose ps` çıktısı.
+6. **`lite/README.md`'ye kısa bir "Deploy" bölümü:** `.env` oluşturma, compose ile başlatma, VDS'te önünde TLS yapan bir reverse proxy (Caddy ya da nginx) olacağı, `docker compose logs`. Uydurma sayı yok.
+
+Bitti kriteri: `cd lite/backend && npm test` yeşil. Docker kuruluysa compose ile gerçek bir tarama tamamlanmış ve raporlanmış. `git status` sadece izin verilen dosyaları gösteriyor. Rapora değişen dosyalar, test çıktısı, CSP ve Docker sonuçları eklensin.

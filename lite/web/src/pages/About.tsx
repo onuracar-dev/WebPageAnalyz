@@ -18,9 +18,8 @@ export function About() {
         </p>
         <h2>Scan traffic</h2>
         <p>
-          Requests to scanned sites come from this server. If you see unexpected traffic from WPA Lite, contact{' '}
-          {/* TODO(onur): contact email */}
-          <span className="mono">TODO: contact email</span>.
+          Requests to scanned sites come from this server. If you see unexpected traffic from WPA Lite, send an{' '}
+          <a href="/contact?topic=Abuse%20report">abuse report</a>.
         </p>
         <h2>Source</h2>
         <p>

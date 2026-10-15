@@ -39,6 +39,12 @@
   --font-body: var(--font-ui);
   --text-xs: 12px;
   --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 18px;
+  --text-2xl: 24px;
+  --text-4xl: 40px;
+  --leading-display: 1.1;
+  --tracking-display: -0.03em;
   --leading-body: 1.5;
   --tracking-body: 0;
   --space-1: 4px;
@@ -46,11 +52,20 @@
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-20: 80px;
   --radius-control: 12px;
   --radius-panel: 14px;
   --radius-pill: 999px;
   --control-height-sm: 32px;
   --control-height-md: 52px;
+  --control-height-lg: 56px;
+  --control-on: var(--ink);
+  --control-glyph: var(--bg);
+  --focus-ring: var(--accent);
   --shadow-resting: 0 6px 24px rgba(94, 234, 212, 0.18);
   --duration-instant: 120ms;
   --duration-fast: 160ms;
@@ -1128,4 +1143,12 @@ a:hover {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* ---------- Contact ---------- */
+
+.contact-page {
+  flex: 1;
+  padding: var(--gutter);
+  animation: scene-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

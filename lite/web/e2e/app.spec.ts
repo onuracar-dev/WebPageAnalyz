@@ -146,3 +146,41 @@ test('entry page fits the viewport without a scrollbar', async ({ page }) => {
     expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
   }
 });
+
+test('contact form sends a message and confirms', async ({ page }) => {
+  let body: Record<string, unknown> | undefined;
+  await page.route('**/api/contact', async (route) => {
+    body = route.request().postDataJSON();
+    await route.fulfill({ status: 202, json: { ok: true } });
+  });
+  await page.goto('/contact');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  // Arc renders each error twice (animated words + screen-reader copy); check the field state instead.
+  await expect(page.getByLabel('Name')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('Enter your name').first()).toBeAttached();
+
+  await page.getByLabel('Name').fill('Ada Lovelace');
+  await page.getByLabel('Email').fill('ada@example.com');
+  await page.getByRole('radio', { name: 'Bug report' }).click();
+  await page.getByLabel('Message').fill('The scan of example.com showed a duplicate finding.');
+  await page.getByRole('button', { name: 'Send message' }).click();
+
+  await expect(page.getByRole('heading', { name: 'Thanks, Ada' })).toBeVisible();
+  expect(body).toEqual({ name: 'Ada Lovelace', email: 'ada@example.com', topic: 'Bug report', message: 'The scan of example.com showed a duplicate finding.', website: '' });
+});
+
+test('contact form shows server errors and keeps the message', async ({ page }) => {
+  await page.route('**/api/contact', (route) =>
+    route.fulfill({ status: 400, json: { error: { code: 'CONTACT_INVALID', message: 'x', fields: { email: 'This address bounced' } } } }),
+  );
+  await page.goto('/contact?topic=Abuse%20report');
+  await expect(page.getByRole('radio', { name: 'Abuse report' })).toHaveAttribute('aria-checked', 'true');
+  await page.getByLabel('Name').fill('Ada');
+  await page.getByLabel('Email').fill('ada@example.com');
+  await page.getByLabel('Message').fill('Unexpected requests from your scanner today.');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByLabel('Email')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByText('This address bounced').first()).toBeAttached();
+  await expect(page.getByRole('alert').filter({ hasText: 'Some fields need another look.' })).toBeVisible();
+  await expect(page.getByLabel('Message')).toHaveValue('Unexpected requests from your scanner today.');
+});

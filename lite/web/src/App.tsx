@@ -6,6 +6,7 @@ import { ScanForm } from './components/ScanForm';
 import { TerrainBackdrop } from './backdrop/TerrainBackdrop';
 import type { SceneId } from './backdrop/presets';
 import { About } from './pages/About';
+import { Contact } from './pages/Contact';
 import { Terms } from './pages/Terms';
 import { useScanFlow } from './useScanFlow';
 
@@ -47,6 +48,7 @@ function SiteFooter() {
       <a href="/">Scan</a>
       <a href="/about">About</a>
       <a href="/terms">Terms</a>
+      <a href="/contact">Contact</a>
       <a href="https://github.com/onuracar-dev/WebPageAnalyz" rel="noreferrer">
         Source
       </a>
@@ -56,7 +58,7 @@ function SiteFooter() {
 
 export function App() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
-  const page = path === '/terms' ? <Terms /> : path === '/about' ? <About /> : <Scanner />;
+  const page = path === '/terms' ? <Terms /> : path === '/about' ? <About /> : path === '/contact' ? <Contact /> : <Scanner />;
   return (
     <>
       <a className="skip-link" href="#content">
