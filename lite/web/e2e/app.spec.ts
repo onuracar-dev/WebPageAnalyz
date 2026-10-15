@@ -136,3 +136,13 @@ test('no horizontal scroll at 375px on every scene', async ({ page }) => {
   await page.goto('/terms');
   expect(await noOverflow()).toBe(true);
 });
+
+test('entry page fits the viewport without a scrollbar', async ({ page }) => {
+  await mockEngines(page);
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1366, height: 768 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await expect(page.getByLabel('Website URL')).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)).toBe(true);
+  }
+});

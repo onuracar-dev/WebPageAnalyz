@@ -180,8 +180,22 @@ a:hover {
 
 /* ---------- Shared ---------- */
 
-.scene {
+/* The page is one column: the scene fills whatever the footer leaves, so a short scene never adds a scrollbar. */
+#root {
+  display: flex;
   min-height: 100vh;
+  min-height: 100dvh;
+  flex-direction: column;
+}
+
+#content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.scene {
+  flex: 1;
   padding: var(--gutter);
   animation: scene-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
