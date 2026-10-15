@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ENGINE_IDS, SEVERITIES, type EngineInfo, type Scan } from '../api';
+import { ENGINE_IDS, SEVERITIES, displayUrl, type EngineInfo, type Scan } from '../api';
 import { SEVERITY_LABELS, type GroupMode } from '../galaxy/layout';
 import { RedirectNote, formatDuration } from './EngineTimeline';
 import { FindingsAccordion } from './FindingsAccordion';
@@ -47,7 +47,7 @@ export function ResultsView({ scan, cached, engines, onReset }: Props) {
           {cached && <span className="badge">Recent result</span>}
         </p>
         <h2 id="summary-title" className="summary__url" title={scan.url}>
-          {scan.url}
+          {displayUrl(scan.url)}
         </h2>
         <RedirectNote scan={scan} />
         {tookMs !== undefined && (

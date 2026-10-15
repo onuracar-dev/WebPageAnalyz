@@ -128,3 +128,8 @@ export function normalizeInputUrl(raw: string): string {
   if (!value) return value;
   return /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `https://${value}`;
 }
+
+/** Shorter URL for headings: no scheme and no lone trailing slash (the full URL stays in the title attribute). */
+export function displayUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+}

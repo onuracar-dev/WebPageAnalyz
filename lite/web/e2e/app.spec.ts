@@ -69,7 +69,7 @@ test('submit -> live timeline -> results with galaxy and list', async ({ page })
   await startScan(page);
   expect(submitted).toMatchObject({ url: 'https://example.com', consent: { accepted: true, version: '2026-10-15' } });
 
-  await expect(page.getByRole('heading', { name: 'https://example.com/' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'example.com', exact: true })).toBeVisible();
   await expect(page.getByText('1 of 7 engines finished')).toBeVisible();
   await expect(page).toHaveURL(/\?scan=scan-1/);
 

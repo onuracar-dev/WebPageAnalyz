@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { messageFor, normalizeInputUrl } from './api';
+import { displayUrl, messageFor, normalizeInputUrl } from './api';
 
 describe('messageFor', () => {
   it('has a human message for every backend error code', () => {
@@ -14,5 +14,13 @@ describe('normalizeInputUrl', () => {
     expect(normalizeInputUrl('http://example.com')).toBe('http://example.com');
     expect(normalizeInputUrl('ftp://example.com')).toBe('ftp://example.com');
     expect(normalizeInputUrl('')).toBe('');
+  });
+});
+
+describe('displayUrl', () => {
+  it('drops the scheme and a lone trailing slash', () => {
+    expect(displayUrl('https://www.onuracar.dev/')).toBe('www.onuracar.dev');
+    expect(displayUrl('http://example.com/docs/')).toBe('example.com/docs');
+    expect(displayUrl('https://example.com/a?b=1')).toBe('example.com/a?b=1');
   });
 });

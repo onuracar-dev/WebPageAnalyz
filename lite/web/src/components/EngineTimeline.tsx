@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ENGINE_IDS, type EngineInfo, type EngineState, type EngineStatus, type Scan } from '../api';
+import { ENGINE_IDS, displayUrl, type EngineInfo, type EngineState, type EngineStatus, type Scan } from '../api';
 import { scanProgress } from '../progress';
 import { Progress } from '../vendor/arc/progress/progress';
 
@@ -32,7 +32,7 @@ function useElapsed(since: string | undefined, running: boolean) {
 /** Shows where the scanned URL came from when the server followed redirects. */
 export function RedirectNote({ scan }: { scan?: Scan }) {
   if (!scan?.requestedUrl || scan.requestedUrl === scan.url) return null;
-  return <p className="redirect-note">Redirected from <span className="mono">{scan.requestedUrl}</span></p>;
+  return <p className="redirect-note">Redirected from <span className="mono">{displayUrl(scan.requestedUrl)}</span></p>;
 }
 
 function EngineRow({ info, state }: { info: EngineInfo; state: EngineState }) {
@@ -78,7 +78,7 @@ export function EngineTimeline({ url, scan, engines, onCancel }: Props) {
         {elapsed !== undefined && <span className="timeline__elapsed mono">{formatDuration(elapsed)}</span>}
       </div>
       <h2 id="timeline-title" className="timeline__url" title={scan?.url ?? url}>
-        {scan?.url ?? url ?? 'Preparing scan…'}
+        {scan?.url ? displayUrl(scan.url) : url ? displayUrl(url) : 'Preparing scan…'}
       </h2>
       <RedirectNote scan={scan} />
 

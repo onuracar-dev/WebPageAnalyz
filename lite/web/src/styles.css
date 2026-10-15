@@ -586,7 +586,8 @@ a:hover {
     'summary stage'
     'list list';
   gap: 20px;
-  align-items: start;
+  /* Summary and map share one row height so their top and bottom edges line up. */
+  align-items: stretch;
 }
 
 .summary {
@@ -599,6 +600,10 @@ a:hover {
 
 .summary > * {
   margin: 0;
+}
+
+.summary > .button {
+  margin-top: auto;
 }
 
 .severity-counts {
@@ -660,7 +665,6 @@ a:hover {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   min-height: clamp(440px, 74vh, 820px);
 }
 
@@ -672,7 +676,11 @@ a:hover {
 }
 
 .tabs {
-  align-self: flex-end;
+  /* Sits inside the map panel so the panel starts level with the summary. */
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
   display: inline-flex;
   gap: 4px;
   padding: 4px;
@@ -1048,7 +1056,7 @@ a:hover {
   }
 
   .tabs {
-    align-self: stretch;
+    left: 12px;
   }
 
   .tabs__tab {
