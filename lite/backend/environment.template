@@ -17,6 +17,13 @@ RATE_LIMIT_PER_HOUR=3
 SCAN_CONCURRENCY=1
 MAX_QUEUE=5
 RESULT_TTL_MS=1800000
+MAX_STORED_RESULTS=100
+
+# Abuse Prevention & Limits
+# Ayni host icin iki yeni tarama arasindaki bekleme suresi (varsayilan: 10 dk = 600000 ms)
+HOST_COOLDOWN_MS=600000
+# Gunluk global tarama ust limiti (UTC gece yarisinda sifirlanir, varsayilan: 200)
+DAILY_SCAN_LIMIT=200
 
 # Toplam tarama zaman asimi: Browser lane sirali calistigi icin (lighthouse 180s + axe 90s + wpaPage 120s + advancedBrowser 150s),
 # toplam tarama zaman asimi tum surelerin toplamini karsilayacak sekilde varsayilan 8 dakika (480000 ms) olarak ayarlanmistir.

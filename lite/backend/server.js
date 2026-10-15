@@ -24,6 +24,7 @@ const queue = new JobQueue({
     maxQueue: config.maxQueue,
     scanTimeoutMs: config.scanTimeoutMs,
     resultTtlMs: config.resultTtlMs,
+    maxStoredResults: config.maxStoredResults,
     logger
 });
 

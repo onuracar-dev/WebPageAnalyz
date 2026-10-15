@@ -4,6 +4,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { validatePublicUrl } = require('./security/url-safety');
+const { ScanLimiter } = require('./security/scan-limiter');
 const { AppError } = require('./lib/errors');
 
 const INCLUDED_ENGINES = Object.freeze([
@@ -72,9 +73,17 @@ function createApp({
     queue,
     runner = null,
     logger = null,
-    urlValidator = null
+    urlValidator = null,
+    limiter = null,
+    nowFn = null
 } = {}) {
     const app = express();
+
+    const scanLimiter = limiter || new ScanLimiter({
+        hostCooldownMs: config.hostCooldownMs,
+        dailyScanLimit: config.dailyScanLimit,
+        nowFn: nowFn || (() => Date.now())
+    });
 
     if (config.trustProxy) {
         app.set('trust proxy', config.trustProxy);
@@ -125,7 +134,8 @@ function createApp({
         const stats = queue.getStats();
         res.json({
             ok: true,
-            queue: stats
+            queue: stats,
+            dailyRemaining: scanLimiter.getDailyRemaining()
         });
     });
 
@@ -137,6 +147,7 @@ function createApp({
     });
 
     // Submit new scan
+    // Order: consent -> url validation -> active job dedup -> result cache -> host cooldown -> daily limit -> queue capacity
     app.post('/api/scans', scanRateLimiter, async (req, res, next) => {
         try {
             const { url, consent } = req.body || {};
@@ -169,8 +180,19 @@ function createApp({
             }
 
             const targetUrl = targetResult.url;
+            let targetHostname;
+            try {
+                targetHostname = new URL(targetUrl).hostname.toLowerCase();
+            } catch {
+                return res.status(400).json({
+                    error: {
+                        code: 'URL_NOT_ALLOWED',
+                        message: 'Invalid target URL.'
+                    }
+                });
+            }
 
-            // 3. Queue deduplication check
+            // 3. Queue deduplication check (active jobs)
             const activeJob = queue.findActiveByUrl(targetUrl);
             if (activeJob) {
                 return res.status(202).json({
@@ -180,7 +202,46 @@ function createApp({
                 });
             }
 
-            // 4. Queue capacity check
+            // 4. Sonuc cache (if host in cooldown and exact URL has completed result in memory)
+            const hostRemainingMs = scanLimiter.getHostRemainingCooldownMs(targetHostname);
+            const isHostInCooldown = hostRemainingMs > 0;
+
+            if (isHostInCooldown) {
+                const cachedJob = queue.findCompletedByUrl(targetUrl);
+                if (cachedJob) {
+                    return res.status(200).json({
+                        id: cachedJob.id,
+                        status: 'completed',
+                        cached: true
+                    });
+                }
+            }
+
+            // 5. Host cooldown check (if host is in cooldown and not matched by cached result above)
+            if (isHostInCooldown) {
+                const retryAfterSeconds = Math.max(1, Math.ceil(hostRemainingMs / 1000));
+                res.setHeader('Retry-After', String(retryAfterSeconds));
+                return res.status(429).json({
+                    error: {
+                        code: 'HOST_COOLDOWN',
+                        message: 'This host was scanned recently. Please wait before requesting another scan.',
+                        retryAfterSeconds
+                    },
+                    retryAfterSeconds
+                });
+            }
+
+            // 6. Gunluk global limit check
+            if (scanLimiter.isDailyLimitReached()) {
+                return res.status(429).json({
+                    error: {
+                        code: 'DAILY_LIMIT_REACHED',
+                        message: 'Daily scan limit reached. Please try again tomorrow.'
+                    }
+                });
+            }
+
+            // 7. Queue capacity check
             if (queue.isFull()) {
                 return res.status(429).json({
                     error: {
@@ -190,7 +251,7 @@ function createApp({
                 });
             }
 
-            // 5. Consent audit logging to stdout (salt-hashed IP, never raw IP)
+            // 8. Consent audit logging to stdout (salt-hashed IP, never raw IP)
             const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
             const ipHash = crypto.createHash('sha256')
                 .update(`${config.consentSalt}:${clientIp}`)
@@ -205,11 +266,12 @@ function createApp({
                 ipHash
             }));
 
-            // 6. Enqueue scan job
+            // 9. Enqueue scan job and record in limiter
             const job = queue.enqueue({
                 id: scanId,
                 url: targetUrl
             });
+            scanLimiter.recordScan(targetHostname);
 
             return res.status(202).json({
                 id: job.id,
@@ -280,4 +342,4 @@ function createApp({
     return app;
 }
 
-module.exports = { createApp, INCLUDED_ENGINES, sanitizeJobError, SANITIZED_JOB_MESSAGES };
+module.exports = { createApp, INCLUDED_ENGINES, sanitizeJobError, SANITIZED_JOB_MESSAGES, ScanLimiter };

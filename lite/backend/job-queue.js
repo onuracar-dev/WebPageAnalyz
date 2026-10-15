@@ -9,6 +9,7 @@ class JobQueue {
         maxQueue = 5,
         scanTimeoutMs = 4 * 60 * 1000,
         resultTtlMs = 30 * 60 * 1000,
+        maxStoredResults = 100,
         logger = null
     } = {}) {
         this.runner = runner;
@@ -16,6 +17,7 @@ class JobQueue {
         this.maxQueue = maxQueue;
         this.scanTimeoutMs = scanTimeoutMs;
         this.resultTtlMs = resultTtlMs;
+        this.maxStoredResults = maxStoredResults;
         this.logger = logger;
 
         this.jobs = new Map();
@@ -57,6 +59,19 @@ class JobQueue {
             }
         }
         return null;
+    }
+
+    findCompletedByUrl(url) {
+        const normalized = this.normalizeUrl(url);
+        let latest = null;
+        for (const job of this.jobs.values()) {
+            if (job.status === 'completed' && job.normalizedUrl === normalized) {
+                if (!latest || new Date(job.finishedAt || 0) > new Date(latest.finishedAt || 0)) {
+                    latest = job;
+                }
+            }
+        }
+        return latest ? { ...latest } : null;
     }
 
     isFull() {
@@ -161,8 +176,37 @@ class JobQueue {
             clearTimeout(timeoutTimer);
             this.runningJobs.delete(job.id);
             this.scheduleTtl(job.id);
+            this.pruneStoredResults();
             // Process next in line
             setImmediate(() => this.processNext());
+        }
+    }
+
+    pruneStoredResults() {
+        if (!this.maxStoredResults || this.maxStoredResults <= 0) return;
+        const finishedJobs = [];
+        for (const job of this.jobs.values()) {
+            if (job.status === 'completed' || job.status === 'failed') {
+                finishedJobs.push(job);
+            }
+        }
+        if (finishedJobs.length <= this.maxStoredResults) return;
+
+        finishedJobs.sort((a, b) => {
+            const timeA = new Date(a.finishedAt || a.queuedAt || 0).getTime();
+            const timeB = new Date(b.finishedAt || b.queuedAt || 0).getTime();
+            return timeA - timeB;
+        });
+
+        const overflow = finishedJobs.length - this.maxStoredResults;
+        for (let i = 0; i < overflow; i += 1) {
+            const toRemove = finishedJobs[i];
+            this.jobs.delete(toRemove.id);
+            const timer = this.ttlTimers.get(toRemove.id);
+            if (timer) {
+                clearTimeout(timer);
+                this.ttlTimers.delete(toRemove.id);
+            }
         }
     }
 

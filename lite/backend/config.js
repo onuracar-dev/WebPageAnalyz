@@ -45,6 +45,9 @@ function loadConfig(env = process.env) {
         scanConcurrency: parseNumber(env.SCAN_CONCURRENCY, 1),
         maxQueue: parseNumber(env.MAX_QUEUE, 5),
         resultTtlMs: parseNumber(env.RESULT_TTL_MS, 30 * 60 * 1000),
+        hostCooldownMs: parseNumber(env.HOST_COOLDOWN_MS, 10 * 60 * 1000),
+        dailyScanLimit: parseNumber(env.DAILY_SCAN_LIMIT, 200),
+        maxStoredResults: parseNumber(env.MAX_STORED_RESULTS, 100),
         scanTimeoutMs,
         timeouts: Object.freeze({
             scanMs: scanTimeoutMs,

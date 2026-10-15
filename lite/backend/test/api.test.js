@@ -7,6 +7,7 @@ const { AppError } = require('../lib/errors');
 const { loadConfig } = require('../config');
 
 function createTestContext(customConfig = {}) {
+    const nowFn = customConfig.nowFn || (() => Date.now());
     const config = {
         port: 8080,
         host: '127.0.0.1',
@@ -17,6 +18,9 @@ function createTestContext(customConfig = {}) {
         scanConcurrency: 1,
         maxQueue: 5,
         resultTtlMs: 30 * 60 * 1000,
+        hostCooldownMs: customConfig.hostCooldownMs ?? 10 * 60 * 1000,
+        dailyScanLimit: customConfig.dailyScanLimit ?? 200,
+        maxStoredResults: customConfig.maxStoredResults ?? 100,
         scanTimeoutMs: 10_000,
         engineTimeoutMs: 5_000,
         consentVersion: '2026-10-15',
@@ -56,7 +60,8 @@ function createTestContext(customConfig = {}) {
         concurrency: config.scanConcurrency,
         maxQueue: config.maxQueue,
         scanTimeoutMs: config.scanTimeoutMs,
-        resultTtlMs: config.resultTtlMs
+        resultTtlMs: config.resultTtlMs,
+        maxStoredResults: config.maxStoredResults
     });
 
     const mockValidator = async (url) => {
@@ -80,15 +85,17 @@ function createTestContext(customConfig = {}) {
         config,
         queue,
         runner,
-        urlValidator: mockValidator
+        urlValidator: mockValidator,
+        nowFn,
+        limiter: customConfig.limiter
     });
 
-    return { app, queue, config };
+    return { app, queue, config, nowFn };
 }
 
 describe('WebPage Analyzer Lite API', () => {
     describe('GET /api/health', () => {
-        it('returns ok and queue stats', async () => {
+        it('returns ok, queue stats, and dailyRemaining', async () => {
             const { app, queue } = createTestContext();
             try {
                 const res = await supertest(app).get('/api/health');
@@ -96,6 +103,7 @@ describe('WebPage Analyzer Lite API', () => {
                 assert.equal(res.body.ok, true);
                 assert.equal(typeof res.body.queue.running, 'number');
                 assert.equal(typeof res.body.queue.waiting, 'number');
+                assert.equal(typeof res.body.dailyRemaining, 'number');
             } finally {
                 queue.close();
             }
@@ -385,6 +393,135 @@ describe('WebPage Analyzer Lite API', () => {
                     .set('Origin', 'https://webpageanalyzer.onuracar.dev');
                 assert.equal(res.status, 200);
                 assert.equal(res.headers['access-control-allow-origin'], 'https://webpageanalyzer.onuracar.dev');
+            } finally {
+                queue.close();
+            }
+        });
+    });
+
+    describe('Abuse Prevention & Limits (Revizyon 2)', () => {
+        it('returns 429 HOST_COOLDOWN with retryAfterSeconds when scanning different URL on same host during cooldown (Revizyon 2 - a)', async () => {
+            let currentTime = 1700000000000;
+            const nowFn = () => currentTime;
+            const { app, queue } = createTestContext({ nowFn, hostCooldownMs: 600000 });
+            try {
+                // First scan on https://site-cooldown.com/page1
+                const first = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://site-cooldown.com/page1',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+                assert.equal(first.status, 202);
+
+                // Advance 100 seconds
+                currentTime += 100000;
+
+                // Second scan on https://site-cooldown.com/page2 (different URL, same host)
+                const second = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://site-cooldown.com/page2',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+                assert.equal(second.status, 429);
+                assert.equal(second.body.error?.code, 'HOST_COOLDOWN');
+                assert.equal(typeof second.body.retryAfterSeconds, 'number');
+                assert.ok(second.body.retryAfterSeconds > 0);
+                assert.equal(second.body.retryAfterSeconds, 500); // 600 - 100 = 500s
+                assert.equal(second.headers['retry-after'], '500');
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('returns cached completed result without decrementing daily limit when same URL is requested in cooldown (Revizyon 2 - b)', async () => {
+            let currentTime = 1700000000000;
+            const nowFn = () => currentTime;
+            const { app, queue } = createTestContext({ nowFn, hostCooldownMs: 600000, dailyScanLimit: 50 });
+            try {
+                // Check initial dailyRemaining
+                const healthBefore = await supertest(app).get('/api/health');
+                assert.equal(healthBefore.body.dailyRemaining, 50);
+
+                // 1. Submit scan for https://cached-test.com/home
+                const first = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://cached-test.com/home',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+                assert.equal(first.status, 202);
+
+                // Wait for runner to complete
+                await new Promise((r) => setTimeout(r, 60));
+
+                // Check dailyRemaining after 1 scan
+                const healthMid = await supertest(app).get('/api/health');
+                assert.equal(healthMid.body.dailyRemaining, 49);
+
+                // 2. Submit same URL again within cooldown
+                currentTime += 60000; // 1 minute later
+                const second = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://cached-test.com/home',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(second.status, 200);
+                assert.equal(second.body.id, first.body.id);
+                assert.equal(second.body.status, 'completed');
+                assert.equal(second.body.cached, true);
+
+                // Check dailyRemaining did NOT decrement
+                const healthAfter = await supertest(app).get('/api/health');
+                assert.equal(healthAfter.body.dailyRemaining, 49);
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('enforces DAILY_SCAN_LIMIT and resets count when UTC day changes via injected clock (Revizyon 2 - c)', async () => {
+            // 2026-10-15T12:00:00.000Z
+            let currentTime = Date.UTC(2026, 9, 15, 12, 0, 0);
+            const nowFn = () => currentTime;
+            const { app, queue } = createTestContext({ nowFn, dailyScanLimit: 2 });
+            try {
+                // 1st scan on site1
+                const res1 = await supertest(app)
+                    .post('/api/scans')
+                    .send({ url: 'https://site1.com', consent: { accepted: true, version: '2026-10-15' } });
+                assert.equal(res1.status, 202);
+
+                // 2nd scan on site2
+                const res2 = await supertest(app)
+                    .post('/api/scans')
+                    .send({ url: 'https://site2.com', consent: { accepted: true, version: '2026-10-15' } });
+                assert.equal(res2.status, 202);
+
+                // 3rd scan on site3 should exceed daily limit
+                const res3 = await supertest(app)
+                    .post('/api/scans')
+                    .send({ url: 'https://site3.com', consent: { accepted: true, version: '2026-10-15' } });
+                assert.equal(res3.status, 429);
+                assert.equal(res3.body.error?.code, 'DAILY_LIMIT_REACHED');
+
+                const healthLimit = await supertest(app).get('/api/health');
+                assert.equal(healthLimit.body.dailyRemaining, 0);
+
+                // Advance injected clock to next UTC day (2026-10-16T00:00:01.000Z)
+                currentTime = Date.UTC(2026, 9, 16, 0, 0, 1);
+
+                // Health should now show daily limit reset
+                const healthNextDay = await supertest(app).get('/api/health');
+                assert.equal(healthNextDay.body.dailyRemaining, 2);
+
+                // 4th scan on site3 should now succeed
+                const res4 = await supertest(app)
+                    .post('/api/scans')
+                    .send({ url: 'https://site3.com', consent: { accepted: true, version: '2026-10-15' } });
+                assert.equal(res4.status, 202);
             } finally {
                 queue.close();
             }

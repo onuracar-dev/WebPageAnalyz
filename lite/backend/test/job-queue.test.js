@@ -126,4 +126,67 @@ describe('JobQueue', () => {
             queue.close();
         }
     });
+
+    it('prunes oldest finished jobs when MAX_STORED_RESULTS is exceeded without deleting running jobs (Revizyon 2 - d)', async () => {
+        let finishRunningJob = null;
+        const fakeRunner = {
+            runScan: async (url) => {
+                if (url.includes('stay-running')) {
+                    await new Promise((resolve) => { finishRunningJob = resolve; });
+                }
+                return {
+                    status: 'completed',
+                    engines: {},
+                    findings: [],
+                    summary: { bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, byCategory: {} }
+                };
+            }
+        };
+
+        const queue = new JobQueue({
+            runner: fakeRunner,
+            concurrency: 2,
+            maxQueue: 5,
+            scanTimeoutMs: 5000,
+            resultTtlMs: 60000,
+            maxStoredResults: 2
+        });
+
+        try {
+            // Complete job 1
+            queue.enqueue({ id: 'j1', url: 'https://site1.com' });
+            await new Promise((r) => setTimeout(r, 20));
+            assert.equal(queue.getJob('j1').status, 'completed');
+
+            // Complete job 2
+            queue.enqueue({ id: 'j2', url: 'https://site2.com' });
+            await new Promise((r) => setTimeout(r, 20));
+            assert.equal(queue.getJob('j2').status, 'completed');
+
+            // Job 3 stays running
+            queue.enqueue({ id: 'j3', url: 'https://stay-running.com' });
+            await new Promise((r) => setTimeout(r, 20));
+            assert.equal(queue.getJob('j3').status, 'running');
+
+            // Complete job 4 (finished jobs becomes 3 > maxStoredResults of 2)
+            queue.enqueue({ id: 'j4', url: 'https://site4.com' });
+            await new Promise((r) => setTimeout(r, 20));
+            assert.equal(queue.getJob('j4').status, 'completed');
+
+            // Oldest finished job (j1) must be pruned
+            assert.equal(queue.getJob('j1'), null, 'j1 (oldest completed) should be pruned');
+
+            // Newer finished jobs (j2, j4) must still exist
+            assert.ok(queue.getJob('j2'), 'j2 should be retained');
+            assert.ok(queue.getJob('j4'), 'j4 should be retained');
+
+            // Running job (j3) must NOT be deleted
+            const runningJob = queue.getJob('j3');
+            assert.ok(runningJob, 'Running job j3 must NOT be deleted');
+            assert.equal(runningJob.status, 'running');
+        } finally {
+            if (finishRunningJob) finishRunningJob();
+            queue.close();
+        }
+    });
 });
