@@ -8,15 +8,16 @@
   --glass: rgba(8, 11, 15, 0.62);
   --glass-strong: rgba(8, 11, 15, 0.82);
 
-  --sev-critical: #ff4d5e;
-  --sev-high: #ff9a4d;
-  --sev-medium: #f2d16b;
-  --sev-low: #7fc8f8;
-  --sev-info: #a8b3bd;
+  /* One warm hue for what needs attention, sand for medium, greys for the rest. */
+  --sev-critical: #ff6b57;
+  --sev-high: #ff9d8a;
+  --sev-medium: #dcc893;
+  --sev-low: #8796a3;
+  --sev-info: #56616b;
 
-  --font-display: 'Instrument Serif', Georgia, serif;
-  --font-ui: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+  /* One typeface for all text. Code inside the code block keeps the system monospace for alignment. */
+  --font-ui: Satoshi, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: var(--font-ui);
 
   --radius: 18px;
   --gutter: clamp(16px, 4vw, 48px);
@@ -103,8 +104,7 @@ a:hover {
 }
 
 .mono {
-  font-family: var(--font-mono);
-  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
 }
 
 .muted {
@@ -216,8 +216,9 @@ a:hover {
 .section-title {
   margin: 0 0 12px;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: 28px;
+  font-weight: 700;
+  font-size: 24px;
+  letter-spacing: -0.02em;
 }
 
 .badge {
@@ -309,14 +310,15 @@ a:hover {
 .entry__title {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(42px, 7.5vw, 80px);
-  line-height: 1.02;
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  font-size: clamp(38px, 6.4vw, 70px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
   text-shadow: 0 2px 30px rgba(6, 8, 11, 0.7);
 }
 
 .entry__title em {
+  font-style: normal;
   color: var(--accent);
 }
 
@@ -352,7 +354,7 @@ a:hover {
   border-radius: 12px;
   background: rgba(6, 8, 11, 0.6);
   color: var(--ink);
-  font: 400 16px var(--font-mono);
+  font: 400 16px var(--font-ui);
 }
 
 .scan-form__input::placeholder {
@@ -397,8 +399,8 @@ a:hover {
   margin: 12px 4px 0;
   padding: 10px 12px;
   border-radius: 10px;
-  background: rgba(255, 77, 94, 0.12);
-  border: 1px solid rgba(255, 77, 94, 0.35);
+  background: rgba(255, 107, 87, 0.12);
+  border: 1px solid rgba(255, 107, 87, 0.35);
   font-size: 14px;
 }
 
@@ -435,9 +437,10 @@ a:hover {
 .summary__url {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(26px, 3.4vw, 34px);
-  line-height: 1.15;
+  font-weight: 700;
+  font-size: clamp(22px, 2.8vw, 28px);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   overflow-wrap: anywhere;
 }
 
@@ -542,7 +545,7 @@ a:hover {
 }
 
 .engine__error {
-  color: #ffb3bb;
+  color: var(--sev-high);
 }
 
 .engine__meta {
@@ -635,8 +638,8 @@ a:hover {
 .summary__error {
   padding: 12px;
   border-radius: 12px;
-  background: rgba(255, 77, 94, 0.12);
-  border: 1px solid rgba(255, 77, 94, 0.35);
+  background: rgba(255, 107, 87, 0.12);
+  border: 1px solid rgba(255, 107, 87, 0.35);
 }
 
 .summary__engines {
@@ -700,8 +703,12 @@ a:hover {
   position: relative;
   flex: 1;
   min-height: 400px;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
-  background: radial-gradient(ellipse 60% 58% at 50% 50%, rgba(6, 8, 11, 0.55) 0%, rgba(6, 8, 11, 0.15) 70%, rgba(6, 8, 11, 0) 100%);
+  /* A faint veil so the map reads as its own surface over the terrain. */
+  background: rgba(6, 8, 11, 0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
 }
 
 .galaxy__canvas {
@@ -753,6 +760,8 @@ a:hover {
 }
 
 .fa__stack {
+  /* Positioned so absolutely placed screen-reader text in the pills is clipped here instead of growing the page. */
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -766,6 +775,7 @@ a:hover {
 }
 
 .fa__pill {
+  position: relative;
   width: fit-content;
   max-width: 100%;
   padding: 11px 16px;
@@ -948,9 +958,10 @@ a:hover {
 .fa__evidence-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 400;
-  line-height: 1.15;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .fa__evidence-note,
@@ -980,8 +991,9 @@ a:hover {
 .page__title {
   margin: 0 0 16px;
   font-family: var(--font-display);
-  font-weight: 400;
-  font-size: clamp(36px, 6vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  font-size: clamp(32px, 5vw, 44px);
   line-height: 1.05;
 }
 
@@ -1033,7 +1045,6 @@ a:hover {
   .galaxy {
     flex: none;
     height: 440px;
-    background: rgba(6, 8, 11, 0.5);
   }
 
   .tabs {

@@ -1,5 +1,3 @@
-import type { Severity } from '../api';
-
 export type SceneId = 'entry' | 'scan' | 'results';
 
 /** The Topography props we animate between scenes. */
@@ -19,31 +17,17 @@ export interface TerrainSettings {
 
 export const ACCENT = '#5eead4';
 
-const SEVERITY_TONES: Partial<Record<Severity, string>> = {
-  critical: '#ff4d5e',
-  high: '#ff9a4d',
-  medium: '#f2d16b',
-};
-
 const PRESETS: Record<SceneId, TerrainSettings> = {
   // Calm glide over the land while the visitor reads and types.
   entry: { color: ACCENT, speed: 0.18, elevation: 1.1, tilt: 30, glow: 0.6, brightness: 0.95, fog: 0.4, morph: 0.2, glitch: 0, detail: 0.35, markers: 'plus' },
   // Faster, taller and slightly unstable while the engines run.
-  scan: { color: '#7dd3fc', speed: 0.85, elevation: 1.6, tilt: 24, glow: 0.95, brightness: 1.05, fog: 0.3, morph: 0.55, glitch: 0.06, detail: 0.5, markers: 'dots' },
+  scan: { color: '#9ff5e6', speed: 0.85, elevation: 1.6, tilt: 24, glow: 0.95, brightness: 1.05, fog: 0.3, morph: 0.55, glitch: 0.06, detail: 0.5, markers: 'dots' },
   // Camera tips over into a map view and dims so the findings map reads on top.
   results: { color: ACCENT, speed: 0.06, elevation: 0.55, tilt: 72, glow: 0.4, brightness: 0.42, fog: 0.5, morph: 0.1, glitch: 0, detail: 0.3, markers: 'none' },
 };
 
-/** Results take the colour of the most serious finding, so the land itself hints at the outcome. */
-export function presetFor(scene: SceneId, worst?: Severity): TerrainSettings {
-  const preset = PRESETS[scene];
-  if (scene !== 'results' || !worst) return preset;
-  return { ...preset, color: SEVERITY_TONES[worst] ?? ACCENT };
-}
-
-export function worstSeverity(severities: Severity[]): Severity | undefined {
-  const order: Severity[] = ['critical', 'high', 'medium', 'low', 'info'];
-  return order.find((severity) => severities.includes(severity));
+export function presetFor(scene: SceneId): TerrainSettings {
+  return PRESETS[scene];
 }
 
 function hexToRgb(hex: string): [number, number, number] {

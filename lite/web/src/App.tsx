@@ -4,7 +4,7 @@ import { EngineTimeline } from './components/EngineTimeline';
 import { ResultsView } from './components/ResultsView';
 import { ScanForm } from './components/ScanForm';
 import { TerrainBackdrop } from './backdrop/TerrainBackdrop';
-import { worstSeverity, type SceneId } from './backdrop/presets';
+import type { SceneId } from './backdrop/presets';
 import { About } from './pages/About';
 import { Terms } from './pages/Terms';
 import { useScanFlow } from './useScanFlow';
@@ -31,7 +31,7 @@ function Scanner() {
 
   return (
     <>
-      <TerrainBackdrop scene={scene} worst={scene === 'results' ? worstSeverity(state.scan?.findings.map((f) => f.severity) ?? []) : undefined} />
+      <TerrainBackdrop scene={scene} />
       <main className={`scene scene--${scene}`} key={scene}>
         {scene === 'entry' && <ScanForm error={state.error} onSubmit={submit} />}
         {scene === 'scan' && <EngineTimeline scan={state.scan} engines={engines} onCancel={reset} />}

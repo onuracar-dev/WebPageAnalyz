@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Severity } from '../api';
 import Topography from '../vendor/react-bits/Topography';
 import { blendSettings, presetFor, type SceneId, type TerrainSettings } from './presets';
 
@@ -37,12 +36,11 @@ function useTweenedSettings(target: TerrainSettings): TerrainSettings {
 
 interface Props {
   scene: SceneId;
-  worst?: Severity;
 }
 
-export function TerrainBackdrop({ scene, worst }: Props) {
-  const [target, setTarget] = useState(() => presetFor(scene, worst));
-  useEffect(() => setTarget(presetFor(scene, worst)), [scene, worst]);
+export function TerrainBackdrop({ scene }: Props) {
+  const [target, setTarget] = useState(() => presetFor(scene));
+  useEffect(() => setTarget(presetFor(scene)), [scene]);
   const settings = useTweenedSettings(target);
 
   return (

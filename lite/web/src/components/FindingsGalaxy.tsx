@@ -91,6 +91,26 @@ export function FindingsGalaxy({ findings, mode, selectedId, onSelect }: Props) 
 
   const byId = useMemo(() => new Map(findings.map((finding) => [finding.id, finding])), [findings]);
 
+  // The background terrain listens for pointer events on window; keep the map's own pointer activity from reaching it.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    // Stop at the React root, after React has dispatched its own handlers there, so hover and clicks on the map still work.
+    const root = wrap.closest('#root') ?? document.body;
+    const stop = (event: Event) => {
+      if (event.target instanceof Node && wrap.contains(event.target)) event.stopPropagation();
+    };
+    // On entry, tell the terrain the pointer has left so its hover lift does not freeze at the map's edge.
+    const release = () => document.documentElement.dispatchEvent(new PointerEvent('pointerleave'));
+    const types = ['pointermove', 'pointerdown', 'pointerup'] as const;
+    types.forEach((type) => root.addEventListener(type, stop));
+    wrap.addEventListener('pointerenter', release);
+    return () => {
+      types.forEach((type) => root.removeEventListener(type, stop));
+      wrap.removeEventListener('pointerenter', release);
+    };
+  }, []);
+
   // Track the stage size.
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -219,8 +239,8 @@ export function FindingsGalaxy({ findings, mode, selectedId, onSelect }: Props) 
     const ink = style.getPropertyValue('--ink').trim() || '#efe6e8';
     const muted = style.getPropertyValue('--ink-muted').trim() || '#b9a3ad';
     const scale = stageScale(width, height);
-    const labelFont = `500 ${Math.round(12 * Math.max(0.9, scale))}px Inter, system-ui, sans-serif`;
-    const countFont = `400 ${Math.round(11 * Math.max(0.9, scale))}px 'JetBrains Mono', ui-monospace, monospace`;
+    const labelFont = `500 ${Math.round(12 * Math.max(0.9, scale))}px Satoshi, system-ui, sans-serif`;
+    const countFont = `400 ${Math.round(11 * Math.max(0.9, scale))}px Satoshi, system-ui, sans-serif`;
     const reduced = prefersReducedMotion();
     let visible = true;
     let frame = 0;

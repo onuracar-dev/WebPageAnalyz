@@ -22,6 +22,7 @@
 .expand { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: center; gap: var(--space-2); border: 0; border-top: 1px solid var(--border-subtle); padding: 0 var(--space-4); background: var(--surface-raised); color: var(--text-secondary); font: inherit; font-size: var(--text-sm); font-weight: 500; cursor: pointer; transition: color var(--duration-fast) var(--ease-standard), background-color var(--duration-fast) var(--ease-standard); }
 .chevron { display: grid; flex: none; place-items: center; color: var(--text-muted); }
 /* Each role has contrast in both themes; color supports, but never replaces, source text. */
+/* WPA Lite: dark-theme token colours reduced to the site palette (accent, sand, greys). */
 .comment { color: var(--text-muted); font-style: italic; }
 .string { color: oklch(46% .13 150); }
 .number { color: oklch(50% .14 55); }
@@ -31,13 +32,13 @@
 .property { color: oklch(44% .12 85); }
 .tag { color: oklch(46% .13 230); }
 .punctuation { color: var(--text-secondary); }
-:global(:root[data-theme="dark"]) .string { color: oklch(77% .15 150); }
-:global(:root[data-theme="dark"]) .number { color: oklch(80% .14 75); }
-:global(:root[data-theme="dark"]) .keyword { color: oklch(78% .16 285); }
-:global(:root[data-theme="dark"]) .type { color: oklch(79% .13 230); }
-:global(:root[data-theme="dark"]) .function { color: oklch(80% .13 25); }
-:global(:root[data-theme="dark"]) .property { color: oklch(79% .12 85); }
-:global(:root[data-theme="dark"]) .tag { color: oklch(79% .13 230); }
+:global(:root[data-theme="dark"]) .string { color: #5eead4; }
+:global(:root[data-theme="dark"]) .number { color: #dcc893; }
+:global(:root[data-theme="dark"]) .keyword { color: #c3ccd5; }
+:global(:root[data-theme="dark"]) .type { color: #c3ccd5; }
+:global(:root[data-theme="dark"]) .function { color: #e8edf2; }
+:global(:root[data-theme="dark"]) .property { color: #dcc893; }
+:global(:root[data-theme="dark"]) .tag { color: #5eead4; }
 @media (hover: hover) and (pointer: fine) { .expand:hover { background: var(--surface-muted); color: var(--foreground); } .expand:hover .chevron { color: var(--foreground); } }
 @media (max-width: 420px) { .header { padding-left: var(--space-3); } .header :global(button) { width: var(--control-height-sm); padding-inline: 0; } .header :global(button) > span:last-of-type { display: none; } .viewport { --code-collapsed: calc(var(--code-lines, 0) * var(--text-xs) * 1.7 + var(--space-4) * 2); } .pre { padding: var(--space-4); font-size: var(--text-xs); } }
 @media (prefers-reduced-motion: reduce) { .expand { transition: none; } }

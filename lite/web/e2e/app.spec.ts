@@ -85,6 +85,13 @@ test('submit -> live timeline -> results with galaxy and list', async ({ page })
   await page.getByRole('button', { name: 'Next finding' }).click();
   await expect(evidence.getByRole('heading', { name: 'Content-Security-Policy is missing' })).toBeVisible();
 
+  // Nothing (e.g. hidden text inside the scrolling list) may extend the page past the footer.
+  const pageEndsAtFooter = await page.evaluate(() => {
+    const footer = document.querySelector('.site-footer')!.getBoundingClientRect().bottom + window.scrollY;
+    return document.documentElement.scrollHeight <= Math.ceil(footer) + 1;
+  });
+  expect(pageEndsAtFooter).toBe(true);
+
   await page.getByRole('tab', { name: 'Category' }).click();
   await expect(page.getByRole('application', { name: /grouped by category/ })).toBeVisible();
   await page.getByRole('tab', { name: 'Severity' }).click();
