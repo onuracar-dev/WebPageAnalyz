@@ -170,3 +170,61 @@ Bitti kriteri: `npm test` yeşil. `git status` sadece `lite/` gösteriyor. Rapor
 - [ ] Kullanım koşulları/KVKK sayfası: Yellow Lab'e URL gönderildiği, IP'nin sadece salt'lı hash'inin tutulduğu, sonuçların 30 dk sonra silindiği.
 - [ ] İzleme: `/api/health` için uptime kontrolü (ör. UptimeRobot), kuyruk uzun süre doluysa bildirim.
 - [ ] İlk hafta: zombi Chrome süreçleri için `docker top` ve RAM kullanımını kontrol et.
+
+---
+
+## Revizyon 3: Canlı motor ilerlemesi (Claude, 2026-10-15)
+
+Frontend'i Claude yazıyor (`lite/web/`). **Sen sadece `lite/backend/` altında çalış, `lite/web/`'e dokunma.** Kopyalanan motor dosyalarına (`lite/backend/engines/`) yine dokunma.
+
+Şu an `job.engines` sadece tarama bitince doluyor, bu yüzden frontend'deki timeline canlı akamıyor.
+
+1. `enqueue` sırasında `job.engines` dahil 7 motorla başlatılsın: `lighthouse, axe, yellowLab, wpaPage, performancePlus, advancedGeo, visualUx` → her biri `{ status: 'pending' }`. Bu, kuyruktaki iş için `GET /api/scans/:id`'de de görünmeli.
+2. `scan-runner` opsiyonel bir `onEngineUpdate(engineId, patch)` callback'i alsın:
+   - motor başlarken `{ status: 'running', startedAt: <ISO> }`
+   - motor bitince `{ status: 'completed' | 'failed' | 'timed_out', durationMs, error? }`
+   - `advancedBrowser` tek çalıştırma olduğu için `performancePlus`, `advancedGeo` ve `visualUx` aynı anda güncellenir.
+3. `job-queue` bu callback'le `job.engines[engineId]`'yi canlı güncellesin (merge). `GET /api/scans/:id` çalışırken güncel `engines` dönsün. `findings` ve `summary` yine sadece tamamlanınca dolu.
+4. Canlı güncellemedeki `error` da Revizyon 1'deki gibi sanitize edilmiş olmalı (`{ code, message }`, ham mesaj yok).
+5. Cevap şeması değişmesin, sadece `engines` erken dolsun. Frontend bu alan adlarına göre yazılıyor: `engines.<id>.status`, `engines.<id>.startedAt`, `engines.<id>.durationMs`, `engines.<id>.error`.
+6. Testler (sahte analyzer'larla, gerçek Chromium yok):
+   - (a) enqueue sonrası 7 motor `pending`.
+   - (b) runner çalışırken GET'te `running` ve `completed` motorlar karışık görünüyor (bir analyzer'ı promise ile bekletip araya GET at).
+   - (c) canlı güncellemede ham hata mesajı yok.
+   - (d) callback verilmezse runner eskisi gibi çalışıyor.
+
+Bitti kriteri: `cd lite/backend && npm test` yeşil. `git status` sadece `lite/backend/` ve bu TASK.md dışında değişiklik göstermiyor. Raporda değişen dosyalar ve test çıktısı olsun. Mümkünse bir canlı taramada tarama sürerken alınmış bir GET cevabını da ekle (Kaspersky HTTPS taraması kapalıyken).
+
+---
+
+## Revizyon 4: Yönlendirmeleri takip et (Claude, 2026-10-15)
+
+Revizyon 3 bittikten sonra yap. Yine sadece `lite/backend/` altında çalış.
+
+**Bug:** `https://onuracar.dev` taramasında axe, wpaPage ve advanced motorlar `failed` döndü (`net::ERR_TUNNEL_CONNECTION_FAILED`). Site `308` ile `https://www.onuracar.dev/`'e yönlendiriyor. Safe proxy sadece ilk girilen origin'e izin verdiği için tarayıcı yönlendirmede takılıyor. Apex → www ve http → https yönlendirmeleri çok yaygın, yani gerçek kullanıcıların çoğu bu hataya düşer.
+
+1. `POST /api/scans`'te URL doğrulamasından sonra, kuyruğa almadan önce yönlendirmeleri sunucu tarafında çöz:
+   - `redirect: 'manual'` ile en fazla 5 hop. Her hop'un `Location`'ı `validatePublicUrl` ile doğrulanmalı (SSRF: yönlendirme iç ağa gidemez).
+   - Önce `HEAD`, 405/501 dönerse `GET` (body okunmadan iptal). Toplam süre sınırı ~8 sn. Zaman aşımında ya da hata durumunda orijinal URL ile devam et (tarama yine motorlarda dürüstçe fail olur).
+   - Sadece http(s) ve izinli portlar.
+2. Kuyruğa, cache ve dedup kontrollerine, host cooldown'a **son URL** girsin (yani `example.com` ile `www.example.com` aynı cooldown'a düşer).
+3. Cevaba ve `GET /api/scans/:id`'ye `requestedUrl` (kullanıcının girdiği) ekle. `url` taranan son URL olsun.
+4. Testler (fetch mock'lanır, gerçek ağ yok): (a) 308 → www takip ediliyor ve job.url son URL. (b) Yönlendirme private IP'ye gidiyorsa `400 URL_NOT_ALLOWED`. (c) 6+ hop'ta orijinal URL ile devam ya da açık bir hata (hangisini seçtiğini raporla). (d) Ağ hatasında orijinal URL ile devam.
+5. Bitti kriteri: `npm test` yeşil. Canlı olarak `https://onuracar.dev` taramasında axe ve wpaPage `completed` dönüyor (Kaspersky HTTPS taraması kapalıyken). Rapora her motorun status'unu yaz.
+
+---
+
+## Revizyon 5: Yönlendirme çözücüsünde SSRF sıkılaştırması (Claude, 2026-10-15)
+
+Revizyon 3 ve 4 doğrulandı: 42 test yeşil. UI üzerinden canlı `onuracar.dev` taramasında yönlendirme `www`'ye çözüldü, timeline canlı aktı, 7 motorun hepsi `completed`. Sadece `lite/backend/security/url-resolver.js` (ve gerekiyorsa `app.js` ile testleri) değişecek.
+
+1. **DNS rebinding (öncelikli).** `validatePublicUrl` DNS'i çözüp kontrol ediyor, ama ardından `fetch` DNS'i **kendisi tekrar çözüyor**. Kısa TTL'li bir domain ilk sorguda public IP, ikinci sorguda `127.0.0.1` / `169.254.169.254` / `10.x` döndürebilir ve sunucu iç ağa HEAD/GET atmış olur. `SafeBrowserProxy` bu yüzden doğrulanmış IP'ye bağlanıyor, çözücü de aynısını yapmalı.
+   - `fetch` yerine `node:http` / `node:https` `request` kullan. `lookup` seçeneğine `url-safety.js`'teki doğrulamayı kullanan bir fonksiyon ver: çözülen adres public değilse hata dönsün. Ya da doğrulanmış adrese bağlan ve `servername` (SNI) ile `Host` başlığını orijinal hostname olarak ayarla. Hangisini seçtiğini raporla.
+   - Yeni bağımlılık ekleme.
+2. **GET fallback'te zaman aşımı yok.** HEAD 405/501 dönünce atılan GET'in sinyali sadece header geldikten sonra iptal ediliyor. Yanıt vermeyen bir sunucu `POST /api/scans` isteğini süresiz askıda tutabilir. Her istek kalan süre bütçesiyle sınırlı olsun ve toplam süre 8 sn'yi asla aşmasın. Body hiç okunmasın, header gelince bağlantı kapatılsın.
+3. **Testler:**
+   - (a) İlk DNS çözümü public, bağlantı anındaki çözüm private IP olduğunda istek yapılmıyor, orijinal URL ile devam ediliyor ya da `URL_NOT_ALLOWED` dönüyor (hangisi olduğunu raporla). `lookup` inject edilebilir olmalı.
+   - (b) Header göndermeyen bir sunucuda çözücü bütçe içinde dönüyor. Gerçek ağ yerine lokal bir `net.createServer` ile test et, test 10 sn'den kısa sürsün.
+   - (c) Mevcut Revizyon 4 testleri hâlâ geçiyor.
+
+Bitti kriteri: `npm test` yeşil. `git status` sadece `lite/backend/` altında değişiklik gösteriyor. Canlı `https://onuracar.dev` taramasında hâlâ `www`'ye çözülüyor ve 7 motor `completed` (PORT=8099).

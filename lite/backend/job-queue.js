@@ -2,6 +2,24 @@ const crypto = require('node:crypto');
 const { AppError } = require('./lib/errors');
 const { normalizePageUrl } = require('./domain/url-normalization');
 
+const INCLUDED_ENGINE_IDS = Object.freeze([
+    'lighthouse',
+    'axe',
+    'yellowLab',
+    'wpaPage',
+    'performancePlus',
+    'advancedGeo',
+    'visualUx'
+]);
+
+function createInitialEngines() {
+    const engines = {};
+    for (const id of INCLUDED_ENGINE_IDS) {
+        engines[id] = { status: 'pending' };
+    }
+    return engines;
+}
+
 class JobQueue {
     constructor({
         runner,
@@ -78,7 +96,7 @@ class JobQueue {
         return (this.runningJobs.size + this.waitingQueue.length) >= this.maxQueue;
     }
 
-    enqueue({ id = crypto.randomUUID(), url }) {
+    enqueue({ id = crypto.randomUUID(), url, requestedUrl }) {
         if (this.isClosed) {
             throw new AppError('Queue is closed', { status: 503, code: 'QUEUE_CLOSED' });
         }
@@ -92,12 +110,13 @@ class JobQueue {
         const job = {
             id,
             url,
+            requestedUrl: requestedUrl || url,
             normalizedUrl,
             status: 'queued',
             queuedAt: new Date().toISOString(),
             startedAt: null,
             finishedAt: null,
-            engines: {},
+            engines: createInitialEngines(),
             findings: [],
             summary: { bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, byCategory: {} },
             error: null
@@ -114,7 +133,9 @@ class JobQueue {
         return {
             id: job.id,
             status: job.status,
-            position
+            position,
+            url: job.url,
+            requestedUrl: job.requestedUrl
         };
     }
 
@@ -159,9 +180,18 @@ class JobQueue {
         timeoutTimer.unref?.();
 
         try {
-            const result = await this.runner.runScan(job.url, { signal: abortController.signal });
+            const result = await this.runner.runScan(job.url, {
+                signal: abortController.signal,
+                requestedUrl: job.requestedUrl,
+                onEngineUpdate: (engineId, patch) => {
+                    if (!job.engines[engineId]) {
+                        job.engines[engineId] = {};
+                    }
+                    Object.assign(job.engines[engineId], patch);
+                }
+            });
             job.status = result.status;
-            job.engines = result.engines || {};
+            job.engines = { ...job.engines, ...(result.engines || {}) };
             job.findings = result.findings || [];
             job.summary = result.summary || { bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, byCategory: {} };
             job.finishedAt = new Date().toISOString();
@@ -229,4 +259,4 @@ class JobQueue {
     }
 }
 
-module.exports = { JobQueue };
+module.exports = { JobQueue, INCLUDED_ENGINE_IDS, createInitialEngines };

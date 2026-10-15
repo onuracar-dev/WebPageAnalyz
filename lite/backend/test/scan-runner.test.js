@@ -340,4 +340,64 @@ describe('Scan Runner (with injected fake analyzers)', () => {
         assert.equal(error.message.includes('Call log:'), false);
         assert.equal(error.message.includes('navigating to'), false);
     });
+
+    it('runs normally and produces expected results when onEngineUpdate is not provided (Revizyon 3 - d)', async () => {
+        const fakeLighthouse = async () => ({ findings: [{ ruleId: 'lh-ok', severity: 'info' }] });
+        const runner = createScanRunner({
+            config: baseConfig,
+            proxyFactory: mockProxyFactory,
+            analyzers: {
+                lighthouse: fakeLighthouse,
+                axe: null,
+                yellowLab: null,
+                wpaPage: null,
+                advancedBrowser: null
+            }
+        });
+
+        // Calling without onEngineUpdate
+        const result = await runner.runScan('https://example.com');
+        assert.equal(result.status, 'completed');
+        assert.equal(result.engines.lighthouse.status, 'completed');
+    });
+
+    it('emits sanitized engine error in live onEngineUpdate callback without leaking raw message (Revizyon 3 - c)', async () => {
+        const updates = [];
+        const noisyError = new Error('playwright call log details \u001b[31mwith colors\u001b[0m');
+        noisyError.code = 'OPERATION_TIMEOUT';
+
+        const fakeFailingEngine = async () => {
+            throw noisyError;
+        };
+
+        const runner = createScanRunner({
+            config: baseConfig,
+            proxyFactory: mockProxyFactory,
+            analyzers: {
+                lighthouse: fakeFailingEngine,
+                axe: null,
+                yellowLab: null,
+                wpaPage: null,
+                advancedBrowser: null
+            }
+        });
+
+        await runner.runScan('https://example.com', {
+            onEngineUpdate: (engineId, patch) => {
+                updates.push({ engineId, patch });
+            }
+        });
+
+        const runningUpdate = updates.find((u) => u.engineId === 'lighthouse' && u.patch.status === 'running');
+        assert.ok(runningUpdate);
+        assert.ok(runningUpdate.patch.startedAt);
+
+        const errorUpdate = updates.find((u) => u.engineId === 'lighthouse' && (u.patch.status === 'failed' || u.patch.status === 'timed_out'));
+        assert.ok(errorUpdate);
+        assert.ok(errorUpdate.patch.error);
+        assert.equal(errorUpdate.patch.error.code, 'OPERATION_TIMEOUT');
+        assert.equal(errorUpdate.patch.error.message, 'Engine exceeded its time limit.');
+        assert.equal(errorUpdate.patch.error.message.includes('\u001b'), false);
+        assert.equal(errorUpdate.patch.error.message.includes('playwright'), false);
+    });
 });

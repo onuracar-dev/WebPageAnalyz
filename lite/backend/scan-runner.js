@@ -85,13 +85,24 @@ function createScanRunner({
         ...analyzers
     };
 
-    const createProxy = proxyFactory || ((targetUrl) => new SafeBrowserProxy({
-        allowedPorts: config.allowedPorts,
-        allowedOrigins: [new URL(targetUrl).origin],
-        readOnly: false,
-        logger,
-        connectTimeoutMs: config.proxyConnectTimeoutMs
-    }));
+    const createProxy = proxyFactory || ((targetUrl, requestedUrl) => {
+        const origins = [new URL(targetUrl).origin];
+        if (requestedUrl) {
+            try {
+                const reqOrigin = new URL(requestedUrl).origin;
+                if (!origins.includes(reqOrigin)) {
+                    origins.push(reqOrigin);
+                }
+            } catch { /* ignore */ }
+        }
+        return new SafeBrowserProxy({
+            allowedPorts: config.allowedPorts,
+            allowedOrigins: origins,
+            readOnly: false,
+            logger,
+            connectTimeoutMs: config.proxyConnectTimeoutMs
+        });
+    });
 
     async function runSingleEngine(engineId, taskFn, timeoutMs, parentSignal) {
         const start = Date.now();
@@ -125,16 +136,24 @@ function createScanRunner({
     }
 
     return {
-        async runScan(targetUrl, { signal } = {}) {
+        async runScan(targetUrl, { signal, onEngineUpdate, requestedUrl } = {}) {
             const scanArtifactDir = path.join(config.artifactDir, `scan_${crypto.randomUUID()}`);
             await fs.mkdir(scanArtifactDir, { recursive: true });
 
             let proxy = null;
             let proxyUrl = null;
 
+            const updateEngine = (id, patch) => {
+                if (typeof onEngineUpdate === 'function') {
+                    try {
+                        onEngineUpdate(id, patch);
+                    } catch { /* ignore callback errors */ }
+                }
+            };
+
             try {
-                // Set up SSRF-safe proxy for browser engines
-                proxy = createProxy(targetUrl);
+                // Set up SSRF-safe proxy for browser engines (allows both initial and resolved origins)
+                proxy = createProxy(targetUrl, requestedUrl);
                 if (proxy?.start) {
                     proxyUrl = await proxy.start();
                 }
@@ -164,6 +183,7 @@ function createScanRunner({
                     const fn = activeAnalyzers.yellowLab;
                     if (typeof fn !== 'function') return;
 
+                    updateEngine(engineId, { status: 'running', startedAt: new Date().toISOString() });
                     const run = await runSingleEngine(
                         engineId,
                         (s) => fn(targetUrl, {
@@ -174,11 +194,13 @@ function createScanRunner({
                         yellowLabTimeoutMs,
                         signal
                     );
-                    engineResults.yellowLab = {
+                    const update = {
                         status: run.status,
                         durationMs: run.durationMs,
                         ...(run.error ? { error: run.error } : {})
                     };
+                    engineResults.yellowLab = update;
+                    updateEngine(engineId, update);
 
                     if (run.status === 'completed' && run.result) {
                         if (Array.isArray(run.result.findings)) {
@@ -196,17 +218,21 @@ function createScanRunner({
                 const browserLanePromise = (async () => {
                     // Lighthouse
                     if (typeof activeAnalyzers.lighthouse === 'function') {
+                        updateEngine('lighthouse', { status: 'running', startedAt: new Date().toISOString() });
                         const run = await runSingleEngine(
                             'lighthouse',
                             (s) => activeAnalyzers.lighthouse(targetUrl, { ...engineOptions, signal: s }),
                             lighthouseTimeoutMs,
                             signal
                         );
-                        engineResults.lighthouse = {
+                        const update = {
                             status: run.status,
                             durationMs: run.durationMs,
                             ...(run.error ? { error: run.error } : {})
                         };
+                        engineResults.lighthouse = update;
+                        updateEngine('lighthouse', update);
+
                         if (run.status === 'completed' && run.result) {
                             if (Array.isArray(run.result.findings)) {
                                 collectedFindings.push(...run.result.findings);
@@ -227,17 +253,21 @@ function createScanRunner({
 
                     // Axe
                     if (typeof activeAnalyzers.axe === 'function') {
+                        updateEngine('axe', { status: 'running', startedAt: new Date().toISOString() });
                         const run = await runSingleEngine(
                             'axe',
                             (s) => activeAnalyzers.axe(targetUrl, { ...engineOptions, signal: s }),
                             axeTimeoutMs,
                             signal
                         );
-                        engineResults.axe = {
+                        const update = {
                             status: run.status,
                             durationMs: run.durationMs,
                             ...(run.error ? { error: run.error } : {})
                         };
+                        engineResults.axe = update;
+                        updateEngine('axe', update);
+
                         if (run.status === 'completed' && run.result) {
                             if (Array.isArray(run.result.findings)) {
                                 collectedFindings.push(...run.result.findings);
@@ -252,17 +282,21 @@ function createScanRunner({
 
                     // WPA Page
                     if (typeof activeAnalyzers.wpaPage === 'function') {
+                        updateEngine('wpaPage', { status: 'running', startedAt: new Date().toISOString() });
                         const run = await runSingleEngine(
                             'wpaPage',
                             (s) => activeAnalyzers.wpaPage(targetUrl, { ...engineOptions, signal: s }),
                             wpaPageTimeoutMs,
                             signal
                         );
-                        engineResults.wpaPage = {
+                        const update = {
                             status: run.status,
                             durationMs: run.durationMs,
                             ...(run.error ? { error: run.error } : {})
                         };
+                        engineResults.wpaPage = update;
+                        updateEngine('wpaPage', update);
+
                         if (run.status === 'completed' && run.result) {
                             if (Array.isArray(run.result.findings)) {
                                 collectedFindings.push(...run.result.findings.map((f) => enrichWpaFinding(f, targetUrl)));
@@ -289,17 +323,21 @@ function createScanRunner({
                             ['visualUx', activeAnalyzers.visualUx]
                         ]) {
                             if (typeof fn === 'function') {
+                                updateEngine(engineId, { status: 'running', startedAt: new Date().toISOString() });
                                 const run = await runSingleEngine(
                                     engineId,
                                     (s) => fn(targetUrl, { ...engineOptions, signal: s }),
                                     advancedBrowserTimeoutMs,
                                     signal
                                 );
-                                engineResults[engineId] = {
+                                const update = {
                                     status: run.status,
                                     durationMs: run.durationMs,
                                     ...(run.error ? { error: run.error } : {})
                                 };
+                                engineResults[engineId] = update;
+                                updateEngine(engineId, update);
+
                                 if (run.status === 'completed' && run.result) {
                                     const findings = Array.isArray(run.result.findings) ? run.result.findings
                                         : Array.isArray(run.result) ? run.result : [];
@@ -308,6 +346,12 @@ function createScanRunner({
                             }
                         }
                     } else if (typeof activeAnalyzers.advancedBrowser === 'function') {
+                        const advancedEngines = ['performancePlus', 'advancedGeo', 'visualUx'];
+                        const startedAt = new Date().toISOString();
+                        for (const id of advancedEngines) {
+                            updateEngine(id, { status: 'running', startedAt });
+                        }
+
                         const run = await runSingleEngine(
                             'advancedBrowser',
                             (s) => activeAnalyzers.advancedBrowser(targetUrl, {
@@ -319,13 +363,14 @@ function createScanRunner({
                             signal
                         );
 
-                        const advancedEngines = ['performancePlus', 'advancedGeo', 'visualUx'];
                         for (const id of advancedEngines) {
-                            engineResults[id] = {
+                            const update = {
                                 status: run.status,
                                 durationMs: run.durationMs,
                                 ...(run.error ? { error: run.error } : {})
                             };
+                            engineResults[id] = update;
+                            updateEngine(id, update);
                         }
 
                         if (run.status === 'completed' && run.result) {

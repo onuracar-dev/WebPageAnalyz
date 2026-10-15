@@ -4,6 +4,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const crypto = require('node:crypto');
 const { validatePublicUrl } = require('./security/url-safety');
+const { resolveRedirects } = require('./security/url-resolver');
 const { ScanLimiter } = require('./security/scan-limiter');
 const { AppError } = require('./lib/errors');
 
@@ -75,7 +76,9 @@ function createApp({
     logger = null,
     urlValidator = null,
     limiter = null,
-    nowFn = null
+    nowFn = null,
+    redirectResolver = null,
+    lookup = null
 } = {}) {
     const app = express();
 
@@ -147,7 +150,7 @@ function createApp({
     });
 
     // Submit new scan
-    // Order: consent -> url validation -> active job dedup -> result cache -> host cooldown -> daily limit -> queue capacity
+    // Order: consent -> url validation -> redirect resolution -> active job dedup -> result cache -> host cooldown -> daily limit -> queue capacity
     app.post('/api/scans', scanRateLimiter, async (req, res, next) => {
         try {
             const { url, consent } = req.body || {};
@@ -163,12 +166,12 @@ function createApp({
             }
 
             // 2. Target URL validation (SSRF Protection)
-            let targetResult;
+            let initialTargetResult;
             try {
                 if (typeof urlValidator === 'function') {
-                    targetResult = await urlValidator(url);
+                    initialTargetResult = await urlValidator(url);
                 } else {
-                    targetResult = await validatePublicUrl(url, { allowedPorts: config.allowedPorts });
+                    initialTargetResult = await validatePublicUrl(url, { allowedPorts: config.allowedPorts });
                 }
             } catch (error) {
                 return res.status(400).json({
@@ -179,7 +182,36 @@ function createApp({
                 });
             }
 
-            const targetUrl = targetResult.url;
+            const requestedUrl = initialTargetResult.url;
+
+            // 2b. Server-side redirect resolution (follows up to 5 hops, validates each hop for SSRF)
+            let resolvedUrl = requestedUrl;
+            try {
+                const resolverFn = redirectResolver || resolveRedirects;
+                const redirectOpts = {
+                    maxHops: 5,
+                    timeoutMs: 8000,
+                    allowedPorts: config.allowedPorts,
+                    validator: typeof urlValidator === 'function' ? urlValidator : validatePublicUrl
+                };
+                if (lookup) {
+                    redirectOpts.lookup = lookup;
+                }
+                const redirectRes = await resolverFn(requestedUrl, redirectOpts);
+                resolvedUrl = redirectRes.resolvedUrl;
+            } catch (err) {
+                if (err.code === 'URL_NOT_ALLOWED' || err.code === 'PRIVATE_TARGET_BLOCKED' || err.status === 400) {
+                    return res.status(400).json({
+                        error: {
+                            code: 'URL_NOT_ALLOWED',
+                            message: err.message || 'Redirect target URL is not allowed.'
+                        }
+                    });
+                }
+                resolvedUrl = requestedUrl;
+            }
+
+            const targetUrl = resolvedUrl;
             let targetHostname;
             try {
                 targetHostname = new URL(targetUrl).hostname.toLowerCase();
@@ -198,6 +230,8 @@ function createApp({
                 return res.status(202).json({
                     id: activeJob.id,
                     status: activeJob.status,
+                    url: activeJob.url,
+                    requestedUrl: activeJob.requestedUrl || requestedUrl,
                     ...(activeJob.status === 'queued' ? { position: activeJob.position } : {})
                 });
             }
@@ -212,7 +246,9 @@ function createApp({
                     return res.status(200).json({
                         id: cachedJob.id,
                         status: 'completed',
-                        cached: true
+                        cached: true,
+                        url: cachedJob.url,
+                        requestedUrl: cachedJob.requestedUrl || requestedUrl
                     });
                 }
             }
@@ -269,14 +305,17 @@ function createApp({
             // 9. Enqueue scan job and record in limiter
             const job = queue.enqueue({
                 id: scanId,
-                url: targetUrl
+                url: targetUrl,
+                requestedUrl
             });
             scanLimiter.recordScan(targetHostname);
 
             return res.status(202).json({
                 id: job.id,
                 status: job.status,
-                position: job.position
+                position: job.position,
+                url: job.url,
+                requestedUrl: job.requestedUrl
             });
         } catch (error) {
             return next(error);
@@ -297,6 +336,7 @@ function createApp({
 
         const response = {
             id: job.id,
+            requestedUrl: job.requestedUrl || job.url,
             url: job.url,
             status: job.status,
             ...(job.status === 'queued' && job.position ? { position: job.position } : {}),

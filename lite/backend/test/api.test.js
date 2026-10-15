@@ -5,6 +5,7 @@ const { createApp } = require('../app');
 const { JobQueue } = require('../job-queue');
 const { AppError } = require('../lib/errors');
 const { loadConfig } = require('../config');
+const { resolveRedirects } = require('../security/url-resolver');
 
 function createTestContext(customConfig = {}) {
     const nowFn = customConfig.nowFn || (() => Date.now());
@@ -64,7 +65,7 @@ function createTestContext(customConfig = {}) {
         maxStoredResults: config.maxStoredResults
     });
 
-    const mockValidator = async (url) => {
+    const mockValidator = customConfig.urlValidator || (async (url) => {
         const parsed = new URL(url);
         if (!['http:', 'https:'].includes(parsed.protocol)) {
             throw new AppError('Disallowed protocol', { status: 400, code: 'INVALID_TARGET_URL' });
@@ -79,7 +80,9 @@ function createTestContext(customConfig = {}) {
             throw new AppError('Private IP blocked', { status: 400, code: 'PRIVATE_TARGET_BLOCKED' });
         }
         return { url: parsed.toString(), hostname };
-    };
+    });
+
+    const redirectResolver = customConfig.redirectResolver || (customConfig.lookup ? undefined : async (url) => ({ resolvedUrl: url, hops: 0, redirected: false }));
 
     const app = createApp({
         config,
@@ -87,7 +90,9 @@ function createTestContext(customConfig = {}) {
         runner,
         urlValidator: mockValidator,
         nowFn,
-        limiter: customConfig.limiter
+        limiter: customConfig.limiter,
+        redirectResolver,
+        lookup: customConfig.lookup
     });
 
     return { app, queue, config, nowFn };
@@ -527,4 +532,322 @@ describe('WebPage Analyzer Lite API', () => {
             }
         });
     });
+
+    describe('Live Engine Progress (Revizyon 3)', () => {
+        it('initializes all 7 engines with pending status upon enqueue (Revizyon 3 - a)', async () => {
+            const neverEndingRunner = {
+                runScan: async () => new Promise(() => {}) // Stays running forever
+            };
+            const { app, queue } = createTestContext({ customRunner: neverEndingRunner });
+            try {
+                // Job 1 runs and holds concurrency
+                await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://active-site-1.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                // Job 2 is strictly queued in waitingQueue
+                const postRes2 = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://queued-site-2.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+                assert.equal(postRes2.status, 202);
+                const scanId2 = postRes2.body.id;
+
+                const getRes2 = await supertest(app).get(`/api/scans/${scanId2}`);
+                assert.equal(getRes2.status, 200);
+                assert.equal(getRes2.body.status, 'queued');
+
+                const expected = ['lighthouse', 'axe', 'yellowLab', 'wpaPage', 'performancePlus', 'advancedGeo', 'visualUx'];
+                for (const engineId of expected) {
+                    assert.ok(getRes2.body.engines[engineId], `Engine ${engineId} must exist`);
+                    assert.equal(
+                        getRes2.body.engines[engineId].status,
+                        'pending',
+                        `Engine ${engineId} must have pending status while queued`
+                    );
+                }
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('shows mixed running and completed engines live on GET while scan is in progress (Revizyon 3 - b)', async () => {
+            let releaseBlocker;
+            const blockerPromise = new Promise((resolve) => { releaseBlocker = resolve; });
+
+            const fakeLiveRunner = {
+                runScan: async (url, { onEngineUpdate } = {}) => {
+                    // 1. Immediately complete lighthouse
+                    if (onEngineUpdate) {
+                        onEngineUpdate('lighthouse', { status: 'running', startedAt: new Date().toISOString() });
+                        onEngineUpdate('lighthouse', { status: 'completed', durationMs: 120 });
+                        // 2. Start axe and keep it running
+                        onEngineUpdate('axe', { status: 'running', startedAt: new Date().toISOString() });
+                    }
+
+                    // Wait until test inspects the intermediate state
+                    await blockerPromise;
+
+                    if (onEngineUpdate) {
+                        onEngineUpdate('axe', { status: 'completed', durationMs: 200 });
+                    }
+
+                    return {
+                        status: 'completed',
+                        engines: {
+                            lighthouse: { status: 'completed', durationMs: 120 },
+                            axe: { status: 'completed', durationMs: 200 }
+                        },
+                        findings: [],
+                        summary: { bySeverity: {}, byCategory: {} }
+                    };
+                }
+            };
+
+            const { app, queue } = createTestContext({ customRunner: fakeLiveRunner });
+            try {
+                const postRes = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://live-progress-test.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+                assert.equal(postRes.status, 202);
+                const scanId = postRes.body.id;
+
+                // Yield so setImmediate in enqueue starts the job
+                await new Promise((r) => setTimeout(r, 20));
+
+                // GET intermediate state
+                const midRes = await supertest(app).get(`/api/scans/${scanId}`);
+                assert.equal(midRes.status, 200);
+                assert.equal(midRes.body.status, 'running');
+
+                // Verify mixed statuses:
+                // lighthouse is completed
+                assert.equal(midRes.body.engines.lighthouse.status, 'completed');
+                assert.equal(midRes.body.engines.lighthouse.durationMs, 120);
+
+                // axe is running
+                assert.equal(midRes.body.engines.axe.status, 'running');
+                assert.ok(midRes.body.engines.axe.startedAt);
+
+                // other engines still pending
+                assert.equal(midRes.body.engines.yellowLab.status, 'pending');
+                assert.equal(midRes.body.engines.wpaPage.status, 'pending');
+
+                // findings and summary are empty while scan is running
+                assert.deepEqual(midRes.body.findings, []);
+            } finally {
+                releaseBlocker();
+                queue.close();
+            }
+        });
+    });
+
+    describe('Follow Redirects & Safe Proxy (Revizyon 4)', () => {
+        it('follows 308 apex -> www redirect; job.url is final URL and requestedUrl is original URL (Revizyon 4 - a)', async () => {
+            const mockFetch = async (url) => {
+                if (url === 'https://example-apex.com/' || url === 'https://example-apex.com') {
+                    return {
+                        status: 308,
+                        headers: new Headers({ location: 'https://www.example-apex.com/' })
+                    };
+                }
+                if (url === 'https://www.example-apex.com/') {
+                    return {
+                        status: 200,
+                        headers: new Headers()
+                    };
+                }
+                throw new Error(`Unexpected fetch URL: ${url}`);
+            };
+
+            const redirectResolver = (url, opts) => resolveRedirects(url, { ...opts, fetchFn: mockFetch });
+            const { app, queue } = createTestContext({ redirectResolver });
+            try {
+                const postRes = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://example-apex.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(postRes.status, 202);
+                assert.equal(postRes.body.url, 'https://www.example-apex.com/');
+                assert.equal(postRes.body.requestedUrl, 'https://example-apex.com/');
+
+                const scanId = postRes.body.id;
+                const getRes = await supertest(app).get(`/api/scans/${scanId}`);
+                assert.equal(getRes.status, 200);
+                assert.equal(getRes.body.url, 'https://www.example-apex.com/');
+                assert.equal(getRes.body.requestedUrl, 'https://example-apex.com/');
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('returns 400 URL_NOT_ALLOWED when redirect target points to a private IP (Revizyon 4 - b)', async () => {
+            const mockFetch = async (url) => {
+                if (url === 'https://open-redirect.com/' || url === 'https://open-redirect.com') {
+                    return {
+                        status: 302,
+                        headers: new Headers({ location: 'http://127.0.0.1/admin' })
+                    };
+                }
+                return { status: 200, headers: new Headers() };
+            };
+
+            const redirectResolver = (url, opts) => resolveRedirects(url, { ...opts, fetchFn: mockFetch });
+            const { app, queue } = createTestContext({ redirectResolver });
+            try {
+                const res = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://open-redirect.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(res.status, 400);
+                assert.equal(res.body.error?.code, 'URL_NOT_ALLOWED');
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('falls back to original URL when redirects exceed 5 hops (Revizyon 4 - c)', async () => {
+            let hopCount = 0;
+            const mockFetch = async (url) => {
+                hopCount += 1;
+                return {
+                    status: 302,
+                    headers: new Headers({ location: `https://infinite-loop.com/step-${hopCount}` })
+                };
+            };
+
+            const redirectResolver = (url, opts) => resolveRedirects(url, { ...opts, fetchFn: mockFetch });
+            const { app, queue } = createTestContext({ redirectResolver });
+            try {
+                const postRes = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://infinite-loop.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(postRes.status, 202);
+                // When 5 hops is exceeded, falls back to initial requested URL
+                assert.equal(postRes.body.url, 'https://infinite-loop.com/');
+                assert.equal(postRes.body.requestedUrl, 'https://infinite-loop.com/');
+                assert.equal(hopCount, 5);
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('falls back to original URL on network error during redirect resolution (Revizyon 4 - d)', async () => {
+            const mockFetch = async () => {
+                throw new Error('fetch failed: ECONNREFUSED');
+            };
+
+            const redirectResolver = (url, opts) => resolveRedirects(url, { ...opts, fetchFn: mockFetch });
+            const { app, queue } = createTestContext({ redirectResolver });
+            try {
+                const postRes = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://network-error-site.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(postRes.status, 202);
+                assert.equal(postRes.body.url, 'https://network-error-site.com/');
+                assert.equal(postRes.body.requestedUrl, 'https://network-error-site.com/');
+            } finally {
+                queue.close();
+            }
+        });
+    });
+
+    describe('SSRF Hardening & DNS Rebinding (Revizyon 5)', () => {
+        it('blocks request and returns 400 URL_NOT_ALLOWED when DNS rebinding resolves to private IP at connection time (Revizyon 5 - a)', async () => {
+            let dnsCalls = 0;
+            const rebindingLookup = async () => {
+                dnsCalls += 1;
+                // First query (initial URL validation): public IP
+                if (dnsCalls === 1) {
+                    return [{ address: '93.184.216.34', family: 4 }];
+                }
+                // Subsequent query (at connection time): private IP
+                return [{ address: '127.0.0.1', family: 4 }];
+            };
+
+            const { app, queue } = createTestContext({
+                lookup: rebindingLookup,
+                urlValidator: async (u) => {
+                    const parsed = new URL(u);
+                    const records = await rebindingLookup(parsed.hostname);
+                    const ip = records[0].address;
+                    if (['127.0.0.1', '10.0.0.1'].includes(ip)) {
+                        throw new AppError('Private IP blocked', { status: 400, code: 'PRIVATE_TARGET_BLOCKED' });
+                    }
+                    return { url: parsed.toString(), hostname: parsed.hostname };
+                }
+            });
+
+            try {
+                const res = await supertest(app)
+                    .post('/api/scans')
+                    .send({
+                        url: 'https://rebinding-attack.com',
+                        consent: { accepted: true, version: '2026-10-15' }
+                    });
+
+                assert.equal(res.status, 400);
+                assert.equal(res.body.error?.code, 'URL_NOT_ALLOWED');
+                assert.ok(dnsCalls >= 2, 'Must have resolved DNS at least twice (validation and connection)');
+            } finally {
+                queue.close();
+            }
+        });
+
+        it('returns within budget when target server accepts connection but sends no headers (Revizyon 5 - b)', async () => {
+            const net = require('node:net');
+            let serverSocket;
+            const silentServer = net.createServer((socket) => {
+                serverSocket = socket;
+                // Accept TCP connection, deliberately send no HTTP headers or data
+            });
+
+            await new Promise((resolve) => silentServer.listen(0, '127.0.0.1', resolve));
+            const port = silentServer.address().port;
+
+            try {
+                const startTime = Date.now();
+                // 500ms budget to verify fast non-blocking return well below 10s
+                const result = await resolveRedirects(`http://127.0.0.1:${port}/hang`, {
+                    timeoutMs: 500,
+                    allowPrivate: true,
+                    validator: async (u) => ({ url: u })
+                });
+
+                const elapsed = Date.now() - startTime;
+                assert.ok(elapsed >= 450, `Elapsed should be at least ~500ms, was ${elapsed}ms`);
+                assert.ok(elapsed < 3000, `Elapsed must be well below 10s, was ${elapsed}ms`);
+                assert.equal(result.resolvedUrl, `http://127.0.0.1:${port}/hang`);
+                assert.equal(result.hops, 0);
+                assert.equal(result.redirected, false);
+            } finally {
+                if (serverSocket) serverSocket.destroy();
+                await new Promise((resolve) => silentServer.close(resolve));
+            }
+        });
+    });
 });
+
+
