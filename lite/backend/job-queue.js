@@ -1,0 +1,188 @@
+const crypto = require('node:crypto');
+const { AppError } = require('./lib/errors');
+const { normalizePageUrl } = require('./domain/url-normalization');
+
+class JobQueue {
+    constructor({
+        runner,
+        concurrency = 1,
+        maxQueue = 5,
+        scanTimeoutMs = 4 * 60 * 1000,
+        resultTtlMs = 30 * 60 * 1000,
+        logger = null
+    } = {}) {
+        this.runner = runner;
+        this.concurrency = concurrency;
+        this.maxQueue = maxQueue;
+        this.scanTimeoutMs = scanTimeoutMs;
+        this.resultTtlMs = resultTtlMs;
+        this.logger = logger;
+
+        this.jobs = new Map();
+        this.waitingQueue = [];
+        this.runningJobs = new Map();
+        this.ttlTimers = new Map();
+        this.isClosed = false;
+    }
+
+    normalizeUrl(url) {
+        try {
+            return normalizePageUrl(url);
+        } catch {
+            return url;
+        }
+    }
+
+    findActiveByUrl(url) {
+        const normalized = this.normalizeUrl(url);
+        // Check running jobs
+        for (const job of this.runningJobs.values()) {
+            if (job.normalizedUrl === normalized) {
+                return {
+                    id: job.id,
+                    status: job.status,
+                    position: 0
+                };
+            }
+        }
+        // Check waiting jobs
+        for (let i = 0; i < this.waitingQueue.length; i += 1) {
+            const job = this.waitingQueue[i];
+            if (job.normalizedUrl === normalized) {
+                return {
+                    id: job.id,
+                    status: job.status,
+                    position: i + 1
+                };
+            }
+        }
+        return null;
+    }
+
+    isFull() {
+        return (this.runningJobs.size + this.waitingQueue.length) >= this.maxQueue;
+    }
+
+    enqueue({ id = crypto.randomUUID(), url }) {
+        if (this.isClosed) {
+            throw new AppError('Queue is closed', { status: 503, code: 'QUEUE_CLOSED' });
+        }
+
+        if (this.isFull()) {
+            throw new AppError('Scan queue is currently full.', { status: 429, code: 'QUEUE_FULL' });
+        }
+
+        const normalizedUrl = this.normalizeUrl(url);
+
+        const job = {
+            id,
+            url,
+            normalizedUrl,
+            status: 'queued',
+            queuedAt: new Date().toISOString(),
+            startedAt: null,
+            finishedAt: null,
+            engines: {},
+            findings: [],
+            summary: { bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, byCategory: {} },
+            error: null
+        };
+
+        this.jobs.set(id, job);
+        this.waitingQueue.push(job);
+
+        const position = this.waitingQueue.length;
+
+        // Process next tick
+        setImmediate(() => this.processNext());
+
+        return {
+            id: job.id,
+            status: job.status,
+            position
+        };
+    }
+
+    getJob(id) {
+        const job = this.jobs.get(id);
+        if (!job) return null;
+
+        if (job.status === 'queued') {
+            const index = this.waitingQueue.findIndex((j) => j.id === id);
+            return {
+                ...job,
+                position: index >= 0 ? index + 1 : 1
+            };
+        }
+
+        return { ...job };
+    }
+
+    getStats() {
+        return {
+            running: this.runningJobs.size,
+            waiting: this.waitingQueue.length
+        };
+    }
+
+    async processNext() {
+        if (this.isClosed) return;
+        if (this.runningJobs.size >= this.concurrency) return;
+        if (this.waitingQueue.length === 0) return;
+
+        const job = this.waitingQueue.shift();
+        if (!job) return;
+
+        job.status = 'running';
+        job.startedAt = new Date().toISOString();
+        this.runningJobs.set(job.id, job);
+
+        const abortController = new AbortController();
+        const timeoutTimer = setTimeout(() => {
+            abortController.abort(new AppError('Scan exceeded total time limit.', { status: 504, code: 'SCAN_TIMEOUT' }));
+        }, this.scanTimeoutMs);
+        timeoutTimer.unref?.();
+
+        try {
+            const result = await this.runner.runScan(job.url, { signal: abortController.signal });
+            job.status = result.status;
+            job.engines = result.engines || {};
+            job.findings = result.findings || [];
+            job.summary = result.summary || { bySeverity: { critical: 0, high: 0, medium: 0, low: 0, info: 0 }, byCategory: {} };
+            job.finishedAt = new Date().toISOString();
+        } catch (error) {
+            job.status = 'failed';
+            job.finishedAt = new Date().toISOString();
+            job.error = {
+                code: error?.code || 'SCAN_FAILED',
+                message: error?.message || 'Scan execution failed'
+            };
+        } finally {
+            clearTimeout(timeoutTimer);
+            this.runningJobs.delete(job.id);
+            this.scheduleTtl(job.id);
+            // Process next in line
+            setImmediate(() => this.processNext());
+        }
+    }
+
+    scheduleTtl(id) {
+        if (this.resultTtlMs <= 0) return;
+        const timer = setTimeout(() => {
+            this.jobs.delete(id);
+            this.ttlTimers.delete(id);
+        }, this.resultTtlMs);
+        timer.unref?.();
+        this.ttlTimers.set(id, timer);
+    }
+
+    close() {
+        this.isClosed = true;
+        for (const timer of this.ttlTimers.values()) {
+            clearTimeout(timer);
+        }
+        this.ttlTimers.clear();
+    }
+}
+
+module.exports = { JobQueue };

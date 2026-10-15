@@ -1,0 +1,41 @@
+# WebPageAnalyzer Lite Environment Template
+
+# Server Configuration
+PORT=8080
+HOST=0.0.0.0
+NODE_ENV=production
+
+# Security & Access Control
+ALLOWED_ORIGIN=https://webpageanalyzer.onuracar.dev
+
+# Nginx veya baska bir ters proxy arkasinda calisirken TRUST_PROXY=1 (veya true) ayarlanmalidir;
+# aksi halde express-rate-limit ve IP tespiti tum kullanicilari tek bir proxy IP'si olarak algilar.
+TRUST_PROXY=false
+RATE_LIMIT_PER_HOUR=3
+
+# Queue & Concurrency Management
+SCAN_CONCURRENCY=1
+MAX_QUEUE=5
+RESULT_TTL_MS=1800000
+
+# Toplam tarama zaman asimi: Browser lane sirali calistigi icin (lighthouse 180s + axe 90s + wpaPage 120s + advancedBrowser 150s),
+# toplam tarama zaman asimi tum surelerin toplamini karsilayacak sekilde varsayilan 8 dakika (480000 ms) olarak ayarlanmistir.
+SCAN_TIMEOUT_MS=480000
+
+# Per-Engine Timeout Budgets (ms)
+LIGHTHOUSE_TIMEOUT_MS=180000
+AXE_TIMEOUT_MS=90000
+YELLOWLAB_TIMEOUT_MS=150000
+WPAPAGE_TIMEOUT_MS=120000
+ADVANCED_BROWSER_TIMEOUT_MS=150000
+YELLOWLAB_MAX_POLL_ATTEMPTS=24
+
+# Target Execution & Chrome Configuration
+CHROME_PATH=
+CHROME_NO_SANDBOX=false
+ARTIFACT_DIR=
+
+# Consent Management
+CONSENT_VERSION=2026-10-15
+# ZORUNLU: Production ortaminda CONSENT_SALT belirtilmediginde sunucu acilmaz.
+CONSENT_SALT=
