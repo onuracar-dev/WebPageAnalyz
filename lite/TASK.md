@@ -285,3 +285,16 @@ Revizyon 3-5 doğrulandı ve commit'lendi. Frontend'i Claude yazıyor: `/contact
 6. **`lite/README.md`'ye kısa bir "Deploy" bölümü:** `.env` oluşturma, compose ile başlatma, VDS'te önünde TLS yapan bir reverse proxy (Caddy ya da nginx) olacağı, `docker compose logs`. Uydurma sayı yok.
 
 Bitti kriteri: `cd lite/backend && npm test` yeşil. Docker kuruluysa compose ile gerçek bir tarama tamamlanmış ve raporlanmış. `git status` sadece izin verilen dosyaları gösteriyor. Rapora değişen dosyalar, test çıktısı, CSP ve Docker sonuçları eklensin.
+
+### Revizyon 6 denetimi (Claude, 2026-10-15)
+Testler yeşil (backend 55, web 36). Contact uç noktası canlıda doğrulandı (503 / 400 / honeypot 202 / 502, log'da kişisel veri yok). Claude'un düzelttikleri:
+- **Gerçek IP:** `TRUST_PROXY=1` tek başına host'taki reverse proxy'nin iç IP'sini görüyordu, yani IP başına limitler bütün site için tek sayaca dönüşecekti. `nginx.conf`'a `real_ip` (özel ağ aralıklarına güven, `real_ip_recursive on`) eklendi. Backend'e artık sadece gerçek ziyaretçi IP'si gidiyor.
+- **Chromium:** `read_only` container'da `HOME`/`XDG_*` dizinleri `/tmp`'ye yönlendirildi.
+
+### Deploy günü kontrol listesi (VDS'te, Docker ile)
+1. `docker compose up --build` sonrası `docker compose exec web nginx -t` (nginx ayarı burada hiç çalıştırılmadı).
+2. Gerçek bir tarama: 7 motorun status'u. **Chromium sandbox:** Ubuntu 24.04 unprivileged user namespace'leri AppArmor ile kısıtlıyor ve `no-new-privileges` SUID sandbox'ı engelliyor. Tarayıcı açılmazsa önce hatayı oku, sonra seçenekleri tartış (`--no-sandbox` son çare).
+3. IP doğrulaması: iki farklı ağdan birer tarama. Log'daki `ipHash` değerleri farklı olmalı. Cloudflare proxy açıksa Cloudflare IP aralıkları `set_real_ip_from`'a eklenmeli.
+4. `docker stats` ile RAM/CPU (ölçülmüş değer), sonra `mem_limit` gözden geçirilir.
+5. Contact: gerçek anahtarla bir test mesajı.
+6. CSP: tarayıcı konsolunda CSP ihlali olmamalı (Fontshare, WebGL).

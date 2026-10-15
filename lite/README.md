@@ -102,6 +102,12 @@ Düşük kaynaklı VDS ortamları için optimize edilmiştir:
 | `YELLOWLAB_MAX_POLL_ATTEMPTS` | `24` | YellowLab API'si için yoklama deneme sayısı. |
 | `CONSENT_VERSION` | `2026-10-15` | İstemcinin kabul etmesi gereken geçerli onay sözleşmesi sürümü. |
 | `CONSENT_SALT` | *(Zorunlu)* | İstemci IP özetini oluşturmak için salt. Production'da zorunludur. |
+| `RESEND_API_KEY` | `""` | Resend HTTP API anahtarı (ana projeden ayrı, sadece gönderim yetkili). Eksikse contact API 503 döner. |
+| `CONTACT_TO` | `""` | İletişim formunun gönderileceği hedef e-posta adresi. |
+| `CONTACT_FROM` | `""` | Resend'de doğrulanmış gönderici e-posta adresi (ör. `WPA Lite <noreply@usewpa.tech>`). |
+| `CONTACT_RATE_LIMIT_PER_HOUR` | `3` | IP başına saatlik iletişim formu gönderim limiti. |
+| `CONTACT_DAILY_LIMIT` | `50` | Global günlük maksimum iletişim formu gönderim limiti (UTC gece yarısı sıfırlanır). |
+| `WEB_PORT` | `8081` | Web container'ının host makinede dinleyeceği yerel port. |
 | `CHROME_PATH` | Sistem varsayılanı | Chromium/Chrome çalıştırılabilir dosya yolu. |
 | `CHROME_NO_SANDBOX` | `false` | Docker ortamında gerekliyse `--no-sandbox` bayrağı. |
 | `ARTIFACT_DIR` | `./artifacts` | Geçici tarama dosyalarının yazılacağı dizin. |
@@ -113,7 +119,7 @@ Düşük kaynaklı VDS ortamları için optimize edilmiştir:
 Tüm yanıtlar JSON formatındadır. Hatalar `{ "error": { "code": "...", "message": "..." } }` biçiminde döner.
 
 ### 1. `GET /api/health`
-Kuyruk ve servis durumunu döndürür.
+Kuyruk, günlük kota ve iletişim servisi durumunu döndürür.
 ```json
 {
   "ok": true,
@@ -121,7 +127,8 @@ Kuyruk ve servis durumunu döndürür.
     "running": 0,
     "waiting": 0
   },
-  "dailyRemaining": 200
+  "dailyRemaining": 200,
+  "contact": true
 }
 ```
 
@@ -144,7 +151,9 @@ Yeni bir tarama başlatır veya aynı URL için mevcut taramayı döndürür.
 {
   "id": "18f9933c-38e2-45e6-bd9b-c4f48ff3c8a9",
   "status": "queued",
-  "position": 1
+  "position": 1,
+  "url": "https://example.com/",
+  "requestedUrl": "https://example.com"
 }
 ```
 
@@ -153,7 +162,8 @@ Belirtilen taramanın durumunu ve sonuçlarını döndürür.
 ```json
 {
   "id": "18f9933c-38e2-45e6-bd9b-c4f48ff3c8a9",
-  "url": "https://example.com",
+  "requestedUrl": "https://example.com",
+  "url": "https://example.com/",
   "status": "completed",
   "startedAt": "2026-10-15T12:00:00.000Z",
   "finishedAt": "2026-10-15T12:01:15.000Z",
@@ -177,7 +187,7 @@ Tarama tamamen başarısız olduğunda:
 ```json
 {
   "id": "...",
-  "url": "https://example.com",
+  "url": "https://example.com/",
   "status": "failed",
   "error": {
     "code": "SCAN_FAILED",
@@ -189,21 +199,116 @@ Tarama tamamen başarısız olduğunda:
 }
 ```
 
+### 5. `POST /api/contact`
+Kullanıcı geri bildirimi, hata ve kötüye kullanım bildirimleri için iletişim formu uç noktasıdır.
+```json
+{
+  "name": "Ada Lovelace",
+  "email": "ada@example.com",
+  "topic": "Feedback",
+  "message": "WPA Lite motor raporları çok net ve hızlı çalışıyor.",
+  "website": ""
+}
+```
+- **Doğrulama**: `name` 1–100 karakter, `email` geçerli e-posta (en fazla 200 karakter), `topic` (`Feedback`, `Bug report`, `Abuse report`, `Other`), `message` 20–2000 karakter.
+- **Honeypot**: Botları engellemek için `website` alanı doluysa e-posta gönderilmez fakat `202 { "ok": true }` döndürülür.
+- **Limitler**: IP başına saatte 3 (`CONTACT_RATE_LIMIT_PER_HOUR`), global günlük 50 (`CONTACT_DAILY_LIMIT`). Aşılırsa `429 CONTACT_RATE_LIMITED` döner.
+- **Gizlilik & Loglama**: İsim, e-posta veya mesaj içeriği asla loglanmaz; yalnızca `{ event: 'contact', topic, at, ipHash }` biçiminde salt-hash'li IP kaydedilir.
+- **E-posta Gönderimi**: Resend HTTP API üzerinden düz metin (`text`) olarak iletilir. Konu satırındaki isimden CR/LF karakterleri temizlenir ve en fazla 80 karaktere kırpılır.
+
+**Başarılı Yanıt (`202 Accepted`):**
+```json
+{
+  "ok": true
+}
+```
+
 ---
 
-## Çalıştırma
+## Deploy
 
-### Yerel Kurulum
+WPA Lite, ön yüz (`web`) ve arka yüz (`backend`) servislerini izole container'lar olarak `docker-compose` ile ayağa kaldırır.
+
+### 1. Ortam Değişkenlerini Hazırlama
+`lite/.env.example` dosyasını kopyalayarak `lite/.env` dosyasını oluşturun:
 ```bash
+cp lite/.env.example lite/.env
+```
+Gerekli alanları doldurun:
+- `CONSENT_SALT`: Rastgele 32 baytlık hex dize oluşturun (`openssl rand -hex 32`).
+- `RESEND_API_KEY`: Sadece gönderim yetkisine sahip Resend API anahtarı.
+- `CONTACT_FROM`: Resend'de doğrulanmış alan adından gönderici adresi (ör. `WPA Lite <noreply@usewpa.tech>`).
+- `CONTACT_TO`: İletişim formlarının yönlendirileceği hedef e-posta adresi.
+- `ALLOWED_ORIGIN`: `https://webpageanalyzer.onuracar.dev`
+- `WEB_PORT`: Web container'ının host makinede dinleyeceği yerel port (varsayılan: `8081`).
+
+### 2. Docker Compose ile Başlatma
+Container'ları derleyip arka planda çalıştırın:
+```bash
+docker compose -f lite/docker-compose.yml up -d --build
+```
+- `backend` servisi dış dünyaya port açmaz; yalnızca Docker dahili ağında `http://backend:8080` olarak `web` servisi tarafından erişilebilir.
+- `web` servisi `127.0.0.1:8081` adresinde dinler ve `/api/` isteklerini backend servisine ters proxy eder.
+- İki servis de non-root kullanıcı, salt-okunur dosya sistemi (`read_only: true`), tmpfs (`/tmp`, `/app/artifacts`), yetki kısıtlamaları (`cap_drop: [ALL]`, `no-new-privileges:true`) ve log rotasyonu ile çalışır.
+
+### 3. VDS Ters Proxy & TLS Yapılandırması
+VDS üzerinde TLS sonlandırması için Caddy veya Nginx kullanılması önerilir. Dış dünyaya yalnızca `80` ve `443` portları açık tutulmalı, güvenlik duvarında `8080` ve `8081` portları dış erişime kapalı olmalıdır.
+
+**Caddy Örneği (`Caddyfile`):**
+```caddy
+webpageanalyzer.onuracar.dev {
+    reverse_proxy 127.0.0.1:8081
+}
+```
+
+**Nginx Örneği (`/etc/nginx/sites-available/...`):**
+```nginx
+server {
+    listen 80;
+    server_name webpageanalyzer.onuracar.dev;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name webpageanalyzer.onuracar.dev;
+
+    ssl_certificate /etc/letsencrypt/live/webpageanalyzer.onuracar.dev/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/webpageanalyzer.onuracar.dev/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
+### 4. Logları İnceleme
+Container loglarını takip etmek için:
+```bash
+# Tüm servislerin logları
+docker compose -f lite/docker-compose.yml logs -f
+
+# Yalnızca backend logları
+docker compose -f lite/docker-compose.yml logs -f backend
+
+# Yalnızca web logları
+docker compose -f lite/docker-compose.yml logs -f web
+```
+
+### 5. Yerel Geliştirme (Docker Olmadan)
+```bash
+# Backend
 cd lite/backend
 npm install
 npm test
 npm start
-```
 
-### Docker
-```bash
-cd lite/backend
-docker build -t wpa-lite .
-docker run -p 8080:8080 -e CONSENT_SALT="prod-salt-value" --rm wpa-lite
+# Frontend (ayrı terminalde)
+cd lite/web
+npm install
+npm run dev
 ```
