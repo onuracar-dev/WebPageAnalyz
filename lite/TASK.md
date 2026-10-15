@@ -250,13 +250,13 @@ Revizyon 3-5 doğrulandı ve commit'lendi. Frontend'i Claude yazıyor: `/contact
 - **Honeypot:** `website` doluysa mail gönderme, ama `202 { ok: true }` dön (bot fark etmesin).
 - **Limitler:** IP başına saatte 3 (`CONTACT_RATE_LIMIT_PER_HOUR`), global günlük 50 (`CONTACT_DAILY_LIMIT`). Aşılınca `429 CONTACT_RATE_LIMITED`. Tarama limitlerinden ayrı sayaçlar olsun.
 - **Gönderim:** Resend HTTP API'si (`https://api.resend.com/emails`), yeni bağımlılık ekleme, `fetch` yeter. Referans için `backend/email/resend-provider.js`'e bakabilirsin ama kopyalamak zorunda değilsin.
-  - `from`: `CONTACT_FROM` (varsayılan `WPA Lite <onboarding@resend.dev>`). Not: bu varsayılan gönderen, domain doğrulamadan sadece Resend hesabının sahibine mail atabilir. Bizim durumumuz tam bu.
+  - `from`: `CONTACT_FROM`, **zorunlu, varsayılan yok**. Resend'de doğrulanmış bir domainden olmalı (ör. `WPA Lite <noreply@usewpa.tech>`). Not: `onboarding@resend.dev` sadece Resend hesabının sahibine gönderebilir, bizim alıcımız farklı bir adres olduğu için kullanılamaz.
   - `to`: `CONTACT_TO` (env'den, kodda adres yazma).
   - `reply_to`: kullanıcının e-postası.
   - `subject`: `[WPA Lite] <topic> from <name>`. Name'deki CR/LF karakterlerini temizle (header injection), 80 karaktere kırp.
   - Sadece **düz metin** gövde (`text`), HTML yok. Gövdede name, email, topic, message ve gönderim zamanı olsun.
   - 8 sn timeout. Resend hata dönerse `502 CONTACT_FAILED`, sabit ve kısa bir mesajla. Ham sağlayıcı cevabı client'a gitmesin.
-- `RESEND_API_KEY` veya `CONTACT_TO` yoksa `503 CONTACT_DISABLED` (sunucu açılmaya devam etsin, sadece bu uç kapalı olsun). `GET /api/health`'e `contact: true/false` ekle.
+- `RESEND_API_KEY`, `CONTACT_TO` veya `CONTACT_FROM` yoksa `503 CONTACT_DISABLED` (sunucu açılmaya devam etsin, sadece bu uç kapalı olsun). `GET /api/health`'e `contact: true/false` ekle.
 - **Log:** Sadece `{ event: 'contact', topic, at, ipHash }`. Mesaj içeriği, e-posta ve isim asla loglanmaz.
 - Başarılı → `202 { ok: true }`.
 - **Testler** (`fetch` mock'lanır, gerçek ağ yok): geçerli istek Resend'e doğru gövdeyle gidiyor (`reply_to`, düz metin, `to` env'den), honeypot mail atmıyor ama 202 dönüyor, doğrulama hataları `fields` ile dönüyor, CR/LF temizleniyor, rate limit 429, env eksikken 503, Resend hatası 502 ve ham hata sızmıyor, log'da mesaj/e-posta yok.
@@ -276,7 +276,7 @@ Revizyon 3-5 doğrulandı ve commit'lendi. Frontend'i Claude yazıyor: `/contact
    - İkisinde de: `restart: unless-stopped`, log rotasyonu (`max-size: 10m`, `max-file: 3`), `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, `pids_limit`.
    - Backend'e `mem_limit` (ör. 1500m), `read_only: true` ve `/tmp` + artifact dizini için tmpfs.
    - Backend `env_file: .env`, `TRUST_PROXY=1` (nginx arkasında).
-4. **`lite/.env.example`:** `NODE_ENV=production`, `CONSENT_SALT=` (uzun rastgele değer nasıl üretilir: `openssl rand -hex 32`), `ALLOWED_ORIGIN=https://webpageanalyzer.onuracar.dev`, `TRUST_PROXY=1`, `RESEND_API_KEY=`, `CONTACT_TO=` (boş bırak, gerçek adres repoya girmez), `CONTACT_FROM=`, `WEB_PORT=8081`. `lite/.gitignore`'a `.env` ekli olsun.
+4. **`lite/.env.example`:** `NODE_ENV=production`, `CONSENT_SALT=` (uzun rastgele değer nasıl üretilir: `openssl rand -hex 32`), `ALLOWED_ORIGIN=https://webpageanalyzer.onuracar.dev`, `TRUST_PROXY=1`, `RESEND_API_KEY=` (ana projeden ayrı, sadece gönderim yetkili bir anahtar önerilir), `CONTACT_TO=` (boş bırak, gerçek adres repoya girmez), `CONTACT_FROM=` (doğrulanmış domainden, ör. `WPA Lite <noreply@usewpa.tech>`), `WEB_PORT=8081`. `lite/.gitignore`'a `.env` ekli olsun.
 5. **Docker testi:** Onur Docker Desktop kuracak. Kurulunca:
    - `docker compose -f lite/docker-compose.yml up --build`
    - `http://localhost:8081` üzerinden `https://example.com` taraması yap.
