@@ -15,6 +15,8 @@ services:
       HOME: /tmp
       XDG_CONFIG_HOME: /tmp/.config
       XDG_CACHE_HOME: /tmp/.cache
+      # Scan artifacts live in /tmp: a tmpfs mounted elsewhere is root-owned and the app runs as node.
+      ARTIFACT_DIR: /tmp/wpa-artifacts
     env_file:
       - .env
     mem_limit: 1500m
@@ -22,7 +24,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      - /app/artifacts
     cap_drop:
       - ALL
     security_opt:
