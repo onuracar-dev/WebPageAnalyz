@@ -1,0 +1,9 @@
+[Unit]
+Description=WPA Lite: update Cloudflare IP ranges in Caddy and UFW
+Documentation=file:///home/deploy/app/lite/deploy/cloudflare-ips.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/wpa-lite-cloudflare-ips

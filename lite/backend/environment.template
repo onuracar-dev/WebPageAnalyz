@@ -46,15 +46,3 @@ ARTIFACT_DIR=
 CONSENT_VERSION=2026-10-15
 # ZORUNLU: Production ortaminda CONSENT_SALT belirtilmediginde sunucu acilmaz.
 CONSENT_SALT=
-
-# Contact Form & Resend Configuration
-# Resend HTTP API key (ana projeden ayri, sadece gonderim yetkili olmasi onerilir)
-RESEND_API_KEY=
-# Iletisim formunun gidecegi hedef e-posta adresi
-CONTACT_TO=
-# Resend uzerinde dogrulanmis gonderici adresi (varsayilan yok, zorunlu. Ornek: WPA Lite <noreply@usewpa.tech>)
-CONTACT_FROM=
-# IP basina saatlik iletisim formu limiti (varsayilan: 3)
-CONTACT_RATE_LIMIT_PER_HOUR=3
-# Gunluk global iletisim formu gonderim limiti (varsayilan: 50, UTC gun degisiminde sifirlanir)
-CONTACT_DAILY_LIMIT=50

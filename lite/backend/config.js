@@ -69,12 +69,7 @@ function loadConfig(env = process.env) {
         artifactDir: env.ARTIFACT_DIR || path.join(__dirname, 'artifacts'),
         allowedPorts: Object.freeze([80, 443]),
         proxyConnectTimeoutMs: parseNumber(env.PROXY_CONNECT_TIMEOUT_MS, 10_000),
-        yellowLabMaxPollAttempts: parseNumber(env.YELLOWLAB_MAX_POLL_ATTEMPTS, 24),
-        resendApiKey: env.RESEND_API_KEY || '',
-        contactTo: env.CONTACT_TO || '',
-        contactFrom: env.CONTACT_FROM || '',
-        contactRateLimitPerHour: parseNumber(env.CONTACT_RATE_LIMIT_PER_HOUR, 3),
-        contactDailyLimit: parseNumber(env.CONTACT_DAILY_LIMIT, 50)
+        yellowLabMaxPollAttempts: parseNumber(env.YELLOWLAB_MAX_POLL_ATTEMPTS, 24)
     });
 }
 

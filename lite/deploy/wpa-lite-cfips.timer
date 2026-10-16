@@ -1,0 +1,11 @@
+[Unit]
+Description=WPA Lite: weekly Cloudflare IP range update
+Documentation=file:///home/deploy/app/lite/deploy/cloudflare-ips.sh
+
+[Timer]
+OnCalendar=Mon *-*-* 03:30
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

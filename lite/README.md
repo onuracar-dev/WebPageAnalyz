@@ -102,11 +102,6 @@ Düşük kaynaklı VDS ortamları için optimize edilmiştir:
 | `YELLOWLAB_MAX_POLL_ATTEMPTS` | `24` | YellowLab API'si için yoklama deneme sayısı. |
 | `CONSENT_VERSION` | `2026-10-15` | İstemcinin kabul etmesi gereken geçerli onay sözleşmesi sürümü. |
 | `CONSENT_SALT` | *(Zorunlu)* | İstemci IP özetini oluşturmak için salt. Production'da zorunludur. |
-| `RESEND_API_KEY` | `""` | Resend HTTP API anahtarı (ana projeden ayrı, sadece gönderim yetkili). Eksikse contact API 503 döner. |
-| `CONTACT_TO` | `""` | İletişim formunun gönderileceği hedef e-posta adresi. |
-| `CONTACT_FROM` | `""` | Resend'de doğrulanmış gönderici e-posta adresi (ör. `WPA Lite <noreply@usewpa.tech>`). |
-| `CONTACT_RATE_LIMIT_PER_HOUR` | `3` | IP başına saatlik iletişim formu gönderim limiti. |
-| `CONTACT_DAILY_LIMIT` | `50` | Global günlük maksimum iletişim formu gönderim limiti (UTC gece yarısı sıfırlanır). |
 | `WEB_PORT` | `8081` | Web container'ının host makinede dinleyeceği yerel port. |
 | `CHROME_PATH` | Sistem varsayılanı | Chromium/Chrome çalıştırılabilir dosya yolu. |
 | `CHROME_NO_SANDBOX` | `false` | Docker ortamında gerekliyse `--no-sandbox` bayrağı. |
@@ -119,7 +114,7 @@ Düşük kaynaklı VDS ortamları için optimize edilmiştir:
 Tüm yanıtlar JSON formatındadır. Hatalar `{ "error": { "code": "...", "message": "..." } }` biçiminde döner.
 
 ### 1. `GET /api/health`
-Kuyruk, günlük kota ve iletişim servisi durumunu döndürür.
+Kuyruk ve günlük kota durumunu döndürür.
 ```json
 {
   "ok": true,
@@ -127,8 +122,7 @@ Kuyruk, günlük kota ve iletişim servisi durumunu döndürür.
     "running": 0,
     "waiting": 0
   },
-  "dailyRemaining": 200,
-  "contact": true
+  "dailyRemaining": 200
 }
 ```
 
@@ -199,35 +193,11 @@ Tarama tamamen başarısız olduğunda:
 }
 ```
 
-### 5. `POST /api/contact`
-Kullanıcı geri bildirimi, hata ve kötüye kullanım bildirimleri için iletişim formu uç noktasıdır.
-```json
-{
-  "name": "Ada Lovelace",
-  "email": "ada@example.com",
-  "topic": "Feedback",
-  "message": "WPA Lite motor raporları çok net ve hızlı çalışıyor.",
-  "website": ""
-}
-```
-- **Doğrulama**: `name` 1–100 karakter, `email` geçerli e-posta (en fazla 200 karakter), `topic` (`Feedback`, `Bug report`, `Abuse report`, `Other`), `message` 20–2000 karakter.
-- **Honeypot**: Botları engellemek için `website` alanı doluysa e-posta gönderilmez fakat `202 { "ok": true }` döndürülür.
-- **Limitler**: IP başına saatte 3 (`CONTACT_RATE_LIMIT_PER_HOUR`), global günlük 50 (`CONTACT_DAILY_LIMIT`). Aşılırsa `429 CONTACT_RATE_LIMITED` döner.
-- **Gizlilik & Loglama**: İsim, e-posta veya mesaj içeriği asla loglanmaz; yalnızca `{ event: 'contact', topic, at, ipHash }` biçiminde salt-hash'li IP kaydedilir.
-- **E-posta Gönderimi**: Resend HTTP API üzerinden düz metin (`text`) olarak iletilir. Konu satırındaki isimden CR/LF karakterleri temizlenir ve en fazla 80 karaktere kırpılır.
-
-**Başarılı Yanıt (`202 Accepted`):**
-```json
-{
-  "ok": true
-}
-```
-
 ---
 
 ## Deploy
 
-WPA Lite, ön yüz (`web`) ve arka yüz (`backend`) servislerini izole container'lar olarak `docker-compose` ile ayağa kaldırır.
+WPA Lite, ön yüz (`web`) ve arka yüz (`backend`) servislerini izole container'lar olarak `docker-compose` ile ayağa kaldırır. Ayrıntılı sunucu kurulum adımları ve servis konfigürasyonları için [`deploy/DEPLOY.md`](file:///c:/Users/acaro/OneDrive/Masa%C3%BCst%C3%BC/WebPageAnalyz/lite/deploy/DEPLOY.md) kılavuzuna bakın.
 
 ### 1. Ortam Değişkenlerini Hazırlama
 `lite/.env.example` dosyasını kopyalayarak `lite/.env` dosyasını oluşturun:
@@ -236,10 +206,7 @@ cp lite/.env.example lite/.env
 ```
 Gerekli alanları doldurun:
 - `CONSENT_SALT`: Rastgele 32 baytlık hex dize oluşturun (`openssl rand -hex 32`).
-- `RESEND_API_KEY`: Sadece gönderim yetkisine sahip Resend API anahtarı.
-- `CONTACT_FROM`: Resend'de doğrulanmış alan adından gönderici adresi (ör. `WPA Lite <noreply@usewpa.tech>`).
-- `CONTACT_TO`: İletişim formlarının yönlendirileceği hedef e-posta adresi.
-- `ALLOWED_ORIGIN`: `https://webpageanalyzer.onuracar.dev`
+- `ALLOWED_ORIGIN`: `https://wpa.onuracar.dev`
 - `WEB_PORT`: Web container'ının host makinede dinleyeceği yerel port (varsayılan: `8081`).
 
 ### 2. Docker Compose ile Başlatma

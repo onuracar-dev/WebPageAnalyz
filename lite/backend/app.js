@@ -6,7 +6,6 @@ const crypto = require('node:crypto');
 const { validatePublicUrl } = require('./security/url-safety');
 const { resolveRedirects } = require('./security/url-resolver');
 const { ScanLimiter } = require('./security/scan-limiter');
-const { ContactLimiter } = require('./security/contact-limiter');
 const { AppError } = require('./lib/errors');
 
 const INCLUDED_ENGINES = Object.freeze([
@@ -61,8 +60,6 @@ const SANITIZED_JOB_MESSAGES = {
     QUEUE_CLOSED: 'Scan queue is closed.'
 };
 
-const ALLOWED_CONTACT_TOPICS = Object.freeze(['Feedback', 'Bug report', 'Abuse report', 'Other']);
-
 function sanitizeJobError(error) {
     if (!error) return { code: 'SCAN_FAILED', message: 'Scan execution failed.' };
     const code = error.code || 'SCAN_FAILED';
@@ -79,22 +76,15 @@ function createApp({
     logger = null,
     urlValidator = null,
     limiter = null,
-    contactLimiter = null,
     nowFn = null,
     redirectResolver = null,
-    lookup = null,
-    fetchImpl = null
+    lookup = null
 } = {}) {
     const app = express();
 
     const scanLimiter = limiter || new ScanLimiter({
         hostCooldownMs: config.hostCooldownMs,
         dailyScanLimit: config.dailyScanLimit,
-        nowFn: nowFn || (() => Date.now())
-    });
-
-    const contactLimiterInstance = contactLimiter || new ContactLimiter({
-        dailyContactLimit: config.contactDailyLimit,
         nowFn: nowFn || (() => Date.now())
     });
 
@@ -142,30 +132,13 @@ function createApp({
         }
     });
 
-    // Rate limiter for contact submissions (separate counter from scan limiter)
-    const contactRateLimiter = rateLimit({
-        windowMs: 60 * 60 * 1000,
-        limit: config.contactRateLimitPerHour || 3,
-        standardHeaders: 'draft-8',
-        legacyHeaders: false,
-        handler: (_req, res) => {
-            res.status(429).json({
-                error: {
-                    code: 'CONTACT_RATE_LIMITED',
-                    message: 'Contact request limit exceeded. Please try again later.'
-                }
-            });
-        }
-    });
-
     // Health check endpoint
     app.get('/api/health', (_req, res) => {
         const stats = queue.getStats();
         res.json({
             ok: true,
             queue: stats,
-            dailyRemaining: scanLimiter.getDailyRemaining(),
-            contact: Boolean(config.resendApiKey && config.contactTo && config.contactFrom)
+            dailyRemaining: scanLimiter.getDailyRemaining()
         });
     });
 
@@ -174,137 +147,6 @@ function createApp({
         res.json({
             engines: INCLUDED_ENGINES
         });
-    });
-
-    // Contact form endpoint
-    app.post('/api/contact', contactRateLimiter, async (req, res, next) => {
-        try {
-            // Check if contact delivery is configured
-            if (!config.resendApiKey || !config.contactTo || !config.contactFrom) {
-                return res.status(503).json({
-                    error: {
-                        code: 'CONTACT_DISABLED',
-                        message: 'Contact service is currently disabled.'
-                    }
-                });
-            }
-
-            const { name, email, topic, message, website } = req.body || {};
-
-            // Honeypot: if website is filled, silently return 202 without sending email
-            if (website && String(website).trim().length > 0) {
-                return res.status(202).json({ ok: true });
-            }
-
-            // Input validation
-            const fields = {};
-
-            if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 100) {
-                fields.name = 'Name must be between 1 and 100 characters.';
-            }
-
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (typeof email !== 'string' || email.trim().length === 0 || email.length > 200 || !emailRegex.test(email.trim())) {
-                fields.email = 'A valid email address is required (maximum 200 characters).';
-            }
-
-            if (!ALLOWED_CONTACT_TOPICS.includes(topic)) {
-                fields.topic = 'Topic must be one of: Feedback, Bug report, Abuse report, Other.';
-            }
-
-            if (typeof message !== 'string' || message.trim().length < 20 || message.trim().length > 2000) {
-                fields.message = 'Message must be between 20 and 2000 characters.';
-            }
-
-            if (Object.keys(fields).length > 0) {
-                return res.status(400).json({
-                    error: {
-                        code: 'CONTACT_INVALID',
-                        message: 'Contact form validation failed.',
-                        fields
-                    }
-                });
-            }
-
-            // Global daily limit check
-            if (contactLimiterInstance.isDailyLimitReached()) {
-                return res.status(429).json({
-                    error: {
-                        code: 'CONTACT_RATE_LIMITED',
-                        message: 'Daily contact limit reached. Please try again tomorrow.'
-                    }
-                });
-            }
-
-            // Clean name for subject (strip CR/LF header injection, trim, max 80 chars)
-            const cleanName = String(name).replace(/[\r\n]+/g, ' ').trim().slice(0, 80);
-            const subject = `[WPA Lite] ${topic} from ${cleanName}`;
-            const text = [
-                `Name: ${cleanName}`,
-                `Email: ${email.trim()}`,
-                `Topic: ${topic}`,
-                `Submitted At: ${new Date().toISOString()}`,
-                '',
-                'Message:',
-                message.trim()
-            ].join('\n');
-
-            const fetcher = fetchImpl || globalThis.fetch;
-            try {
-                const response = await fetcher('https://api.resend.com/emails', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${config.resendApiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        from: config.contactFrom,
-                        to: [config.contactTo],
-                        reply_to: email.trim(),
-                        subject,
-                        text
-                    }),
-                    signal: AbortSignal.timeout(8000)
-                });
-
-                if (!response.ok) {
-                    logger?.error?.('Resend API returned error status', { status: response.status });
-                    return res.status(502).json({
-                        error: {
-                            code: 'CONTACT_FAILED',
-                            message: 'Failed to deliver contact message.'
-                        }
-                    });
-                }
-            } catch (err) {
-                logger?.error?.('Resend delivery exception', { error: err.message });
-                return res.status(502).json({
-                    error: {
-                        code: 'CONTACT_FAILED',
-                        message: 'Failed to deliver contact message.'
-                    }
-                });
-            }
-
-            contactLimiterInstance.recordSubmission();
-
-            // Audit log: only topic, at, ipHash (never name, email, or message body)
-            const clientIp = req.ip || req.socket?.remoteAddress || '127.0.0.1';
-            const ipHash = crypto.createHash('sha256')
-                .update(`${config.consentSalt}:${clientIp}`)
-                .digest('hex');
-
-            console.log(JSON.stringify({
-                event: 'contact',
-                topic,
-                at: new Date().toISOString(),
-                ipHash
-            }));
-
-            return res.status(202).json({ ok: true });
-        } catch (error) {
-            return next(error);
-        }
     });
 
     // Submit new scan
@@ -540,4 +382,4 @@ function createApp({
     return app;
 }
 
-module.exports = { createApp, INCLUDED_ENGINES, sanitizeJobError, SANITIZED_JOB_MESSAGES, ScanLimiter, ContactLimiter };
+module.exports = { createApp, INCLUDED_ENGINES, sanitizeJobError, SANITIZED_JOB_MESSAGES, ScanLimiter };
