@@ -399,3 +399,13 @@ Sunucuya ilk kurulumdan günlük işlere kadar sıralı adımlar:
   - Engelli: Docker ağ geçidi 172.30.240.1:22, host public IP:22, 169.254.169.254:80, 10.0.0.1:80.
   - **Bilinen istisna:** Aynı bridge ağındaki `web` container'ına (8080) erişim açık kalıyor, çünkü bridge içi trafik `DOCKER-USER`'dan geçmiyor. nginx backend'e yeni bir yetki vermediği için kabul edildi. DEPLOY.md'de bu şekilde belgele.
 - `wpa-lite-update.timer` aktif (Pazar 04:30 + en fazla 15 dk rastgele gecikme). `wpa-lite-egress.service` docker.service'e bağlı. Unattended reboot 04:00.
+
+### Yayın (Claude, 2026-10-16)
+- **https://wpa.onuracar.dev yayında:** Cloudflare (proxied) → Caddy (Origin cert, 2041'e kadar geçerli) → nginx → backend.
+- **Doğrulananlar:**
+  - Ana sayfa `200` dönüyor, `/api/health` çalışıyor, http → https `308` ile yönleniyor.
+  - Origin IP'sine doğrudan 80/443 erişimi engelli. UFW sadece Cloudflare aralıklarına açık, `wpa-lite-cfips.timer` listeyi haftalık güncelliyor.
+  - Gerçek IP zinciri: Dışarıdan yapılan taramanın `ipHash` değeri gateway ve loopback hash'lerinden farklı.
+  - Canlı timeline ve sonuç ekranı çalışıyor, Satoshi fontu ve WebGL yükleniyor.
+- **CSP:** Tek ihlal Cloudflare Web Analytics beacon script'i. Site analytics kullanmadığı için bilerek engelli bırakıldı.
+- **Eski `webpage-analyzer` Worker silindi** (Onur). `wpa` DNS kaydı artık VDS'e giden bir A kaydı.
