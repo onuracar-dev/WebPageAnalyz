@@ -1,5 +1,4 @@
 import { TerrainBackdrop } from '../backdrop/TerrainBackdrop';
-import { api } from '../api';
 import { ContactForm } from '../components/contact/ContactForm';
 
 export function Contact() {
@@ -8,12 +7,7 @@ export function Contact() {
     <>
       <TerrainBackdrop scene="results" />
       <main className="contact-page">
-        <ContactForm
-          defaultTopic={topic}
-          onSubmit={async (message, honeypot) => {
-            await api.contact(message, honeypot);
-          }}
-        />
+        <ContactForm defaultTopic={topic} />
       </main>
     </>
   );

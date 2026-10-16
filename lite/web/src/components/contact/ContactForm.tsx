@@ -1,23 +1,25 @@
 // Adapted from the Arc UI contact-section block (https://uiarc.dev), MIT License.
 // Kept: the validated form, topic picker and the morph into a confirmation. Changed: copy for a one-person project,
-// no public email address or demo channels/offices, a honeypot field, server-side field errors, and a real API call.
+// no demo channels/offices, and delivery through the visitor's own mail app (mailto:) instead of a backend.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { AnimatePresence, LayoutGroup, motion, useAnimate, useIsPresent, useReducedMotion } from 'motion/react';
 import type { Variants } from 'motion/react';
-import { Clock, ShieldAlert } from 'lucide-react';
-import { ApiError, CONTACT_TOPICS, messageFor, type ContactMessage } from '../../api';
+import { Clock, Mail, ShieldAlert } from 'lucide-react';
+import { CONTACT_TOPICS } from '../../api';
 import { Button } from '../../vendor/arc/button/button';
+import { CopyButton } from '../../vendor/arc/copy-button/copy-button';
 import { Input } from '../../vendor/arc/input/input';
 import { Textarea } from '../../vendor/arc/textarea/textarea';
 import { motionTokens } from '../../vendor/arc/lib/motion-tokens';
+import { buildMailto, contactAddress, mailBody, type MailDraft } from './mailto';
 import styles from './ContactForm.module.css';
 
 type Bezier = [number, number, number, number];
 const enter = [...motionTokens.ease.enter] as Bezier;
 const standard = [...motionTokens.ease.standard] as Bezier;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-export const MAX_MESSAGE = 2000;
+// Long mailto links get cut off by some mail clients, so keep the message comfortably short.
+export const MAX_MESSAGE = 1500;
 export const MIN_MESSAGE = 20;
 
 /** Faces slide along one axis in the direction of travel and settle out of a soft blur. */
@@ -153,47 +155,47 @@ function TopicPicker({ value, onChange, reduced }: { value: string; onChange: (t
   );
 }
 
-export type ContactErrors = Partial<Record<'name' | 'email' | 'message', string>>;
+export type ContactErrors = Partial<Record<'name' | 'message', string>>;
 
-export function validateContact(values: { name: string; email: string; message: string }): ContactErrors {
+export function validateContact(values: { name: string; message: string }): ContactErrors {
   const errors: ContactErrors = {};
   const message = values.message.trim();
   if (!values.name.trim()) errors.name = 'Enter your name';
-  if (!values.email.trim()) errors.email = 'Enter your email address';
-  else if (!EMAIL.test(values.email.trim())) errors.email = 'Enter an email like name@example.com';
   if (message.length < MIN_MESSAGE) errors.message = message ? `Add a little more detail, at least ${MIN_MESSAGE} characters` : 'Tell me what’s on your mind';
   return errors;
 }
 
 interface Props {
-  onSubmit: (message: ContactMessage, honeypot: string) => Promise<void>;
   defaultTopic?: string;
+  /** Opens the visitor's mail app; injectable for tests. */
+  openMail?: (href: string) => void;
 }
 
-export function ContactForm({ onSubmit, defaultTopic }: Props) {
+const defaultOpenMail = (href: string) => {
+  window.location.href = href;
+};
+
+export function ContactForm({ defaultTopic, openMail = defaultOpenMail }: Props) {
   const reduced = useReducedMotion() ?? false;
   const titleId = useId();
-  const [values, setValues] = useState({ name: '', email: '', message: '' });
-  const [honeypot, setHoneypot] = useState('');
+  const address = contactAddress();
+  const [values, setValues] = useState({ name: '', message: '' });
   const [topic, setTopic] = useState<string>(defaultTopic && (CONTACT_TOPICS as readonly string[]).includes(defaultTopic) ? defaultTopic : CONTACT_TOPICS[0]);
   const [errors, setErrors] = useState<ContactErrors>({});
   const [submitted, setSubmitted] = useState(false);
-  const [phase, setPhase] = useState<'editing' | 'sending' | 'sent'>('editing');
-  const [failure, setFailure] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState({ name: '', email: '' });
+  const [draft, setDraft] = useState<MailDraft | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
-  const emailRef = useRef<HTMLInputElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const restoreFocus = useRef(false);
   const successRef = useRef<HTMLHeadingElement>(null);
 
   useEffect(() => {
-    if (phase === 'sent') successRef.current?.focus();
-    if (phase === 'editing' && restoreFocus.current) {
+    if (draft) successRef.current?.focus();
+    if (!draft && restoreFocus.current) {
       restoreFocus.current = false;
       nameRef.current?.focus();
     }
-  }, [phase]);
+  }, [draft]);
 
   const update = (field: keyof typeof values) => (event: { target: { value: string } }) => {
     const next = { ...values, [field]: event.target.value };
@@ -201,48 +203,25 @@ export function ContactForm({ onSubmit, defaultTopic }: Props) {
     if (submitted) setErrors(validateContact(next));
   };
 
-  function focusFirst(found: ContactErrors) {
-    if (found.name) nameRef.current?.focus();
-    else if (found.email) emailRef.current?.focus();
-    else if (found.message) messageRef.current?.focus();
-  }
-
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
-    if (phase !== 'editing') return;
     setSubmitted(true);
-    setFailure(null);
     const found = validateContact(values);
     setErrors(found);
-    if (Object.keys(found).length) {
-      focusFirst(found);
-      return;
-    }
-    setPhase('sending');
-    const payload = { name: values.name.trim(), email: values.email.trim(), topic, message: values.message.trim() };
-    try {
-      await onSubmit(payload, honeypot);
-      setSentTo({ name: payload.name.split(/\s+/)[0], email: payload.email });
-      setPhase('sent');
-    } catch (error) {
-      setPhase('editing');
-      const code = error instanceof ApiError ? error.code : 'NETWORK_ERROR';
-      if (error instanceof ApiError && error.fields) {
-        const serverErrors: ContactErrors = { name: error.fields.name, email: error.fields.email, message: error.fields.message };
-        setErrors(serverErrors);
-        focusFirst(serverErrors);
-      }
-      setFailure(messageFor(code));
-    }
+    if (found.name) nameRef.current?.focus();
+    else if (found.message) messageRef.current?.focus();
+    if (Object.keys(found).length) return;
+    const next = { name: values.name.trim(), topic, message: values.message.trim() };
+    setDraft(next);
+    openMail(buildMailto(next, address));
   }
 
   function reset() {
-    setValues({ name: '', email: '', message: '' });
+    setValues({ name: '', message: '' });
     setErrors({});
     setSubmitted(false);
-    setFailure(null);
     restoreFocus.current = true;
-    setPhase('editing');
+    setDraft(null);
   }
 
   const left = MAX_MESSAGE - values.message.length;
@@ -260,6 +239,11 @@ export function ContactForm({ onSubmit, defaultTopic }: Props) {
           </p>
           <ul className={styles.facts}>
             <li>
+              <Mail size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span>{address}</span>
+              <CopyButton value={address} label="Copy email" iconOnly variant="plain" />
+            </li>
+            <li>
               <Clock size={16} strokeWidth={1.75} aria-hidden="true" />I usually reply within a few days
             </li>
             <li>
@@ -269,8 +253,8 @@ export function ContactForm({ onSubmit, defaultTopic }: Props) {
           </ul>
         </div>
 
-        <MorphPanel faceKey={phase === 'sent' ? 'sent' : 'form'} direction={phase === 'sent' ? 1 : -1} reduced={reduced}>
-          {phase === 'sent' ? (
+        <MorphPanel faceKey={draft ? 'sent' : 'form'} direction={draft ? 1 : -1} reduced={reduced}>
+          {draft ? (
             <div className={styles.success} aria-live="polite">
               <span className={styles.successMark} aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -283,50 +267,38 @@ export function ContactForm({ onSubmit, defaultTopic }: Props) {
                 </svg>
               </span>
               <h2 ref={successRef} tabIndex={-1} className={styles.successTitle}>
-                Thanks, {sentTo.name}
+                Almost there, {draft.name.split(/\s+/)[0]}
               </h2>
-              <p className={styles.successText}>Your message is on its way. I’ll reply to {sentTo.email} as soon as I can.</p>
+              <p className={styles.successText}>
+                Your mail app should have opened with the message ready. Press send there to deliver it.
+              </p>
+              <div className={styles.fallback}>
+                <p className={styles.fine}>Nothing opened?</p>
+                <a className={styles.retry} href={buildMailto(draft, address)}>
+                  Open mail app again
+                </a>
+                <div className={styles.copies}>
+                  <CopyButton value={address} label="Copy address" />
+                  <CopyButton value={mailBody(draft)} label="Copy message" />
+                </div>
+              </div>
               <Button variant="secondary" onClick={reset}>
-                Send another message
+                Write another message
               </Button>
             </div>
           ) : (
             <form className={styles.formBody} onSubmit={submit} noValidate aria-label="Contact form">
-              <div className={styles.row}>
-                <Input
-                  ref={nameRef}
-                  label="Name"
-                  name="name"
-                  autoComplete="name"
-                  placeholder="Ada Lovelace"
-                  maxLength={100}
-                  value={values.name}
-                  onChange={update('name')}
-                  error={errors.name}
-                  readOnly={phase === 'sending'}
-                />
-                <Input
-                  ref={emailRef}
-                  label="Email"
-                  name="email"
-                  type="email"
-                  inputMode="email"
-                  autoComplete="email"
-                  placeholder="ada@example.com"
-                  maxLength={200}
-                  value={values.email}
-                  onChange={update('email')}
-                  error={errors.email}
-                  readOnly={phase === 'sending'}
-                />
-              </div>
-              {/* Honeypot: hidden from people and assistive tech, bots tend to fill it. */}
-              <div className={styles.honeypot} aria-hidden="true">
-                <label>
-                  Website
-                  <input type="text" name="website" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
-                </label>
-              </div>
+              <Input
+                ref={nameRef}
+                label="Name"
+                name="name"
+                autoComplete="name"
+                placeholder="Ada Lovelace"
+                maxLength={100}
+                value={values.name}
+                onChange={update('name')}
+                error={errors.name}
+              />
               <TopicPicker value={topic} onChange={setTopic} reduced={reduced} />
               <Textarea
                 ref={messageRef}
@@ -339,27 +311,11 @@ export function ContactForm({ onSubmit, defaultTopic }: Props) {
                 onChange={update('message')}
                 error={errors.message}
                 description={`${left} characters left`}
-                readOnly={phase === 'sending'}
               />
-              <AnimatePresence initial={false}>
-                {failure && (
-                  <motion.p
-                    key="failure"
-                    role="alert"
-                    className={styles.failure}
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={reduced ? { duration: 0 } : { height: motionTokens.spring.smooth, opacity: { duration: motionTokens.duration.fast, ease: standard } }}
-                  >
-                    {failure}
-                  </motion.p>
-                )}
-              </AnimatePresence>
               <div className={styles.submitRow}>
-                <p className={styles.fine}>Your email is only used to reply to you.</p>
-                <Button type="submit" variant="primary" loading={phase === 'sending'}>
-                  Send message
+                <p className={styles.fine}>Opens your own mail app. Nothing is sent from this site.</p>
+                <Button type="submit" variant="primary">
+                  Write email
                 </Button>
               </div>
             </form>

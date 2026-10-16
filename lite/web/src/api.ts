@@ -13,8 +13,6 @@ export interface ApiErrorBody {
   code: string;
   message: string;
   retryAfterSeconds?: number;
-  /** Per-field validation messages (contact form). */
-  fields?: Record<string, string>;
 }
 
 export interface EngineInfo {
@@ -76,14 +74,12 @@ export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
   readonly retryAfterSeconds?: number;
-  readonly fields?: Record<string, string>;
 
   constructor(status: number, body: Partial<ApiErrorBody> | undefined) {
     super(body?.message || `Request failed with status ${status}`);
     this.status = status;
     this.code = body?.code || (status === 0 ? 'NETWORK_ERROR' : 'UNKNOWN_ERROR');
     this.retryAfterSeconds = body?.retryAfterSeconds;
-    this.fields = body?.fields;
   }
 }
 
@@ -104,13 +100,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const CONTACT_TOPICS = ['Feedback', 'Bug report', 'Abuse report', 'Other'] as const;
 
-export interface ContactMessage {
-  name: string;
-  email: string;
-  topic: string;
-  message: string;
-}
-
 export const api = {
   engines: () => request<{ engines: EngineInfo[] }>('/api/engines').then((r) => r.engines),
   submit: (url: string) =>
@@ -119,9 +108,6 @@ export const api = {
       body: JSON.stringify({ url, consent: { accepted: true, version: CONSENT_VERSION } }),
     }),
   scan: (id: string) => request<Scan>(`/api/scans/${encodeURIComponent(id)}`),
-  /** `website` is a honeypot: real visitors never see or fill it. */
-  contact: (message: ContactMessage, website = '') =>
-    request<{ ok: boolean }>('/api/contact', { method: 'POST', body: JSON.stringify({ ...message, website }) }),
 };
 
 const MESSAGES: Record<string, string> = {
@@ -133,10 +119,6 @@ const MESSAGES: Record<string, string> = {
   DAILY_LIMIT_REACHED: 'Today’s scan limit has been reached. Please come back tomorrow.',
   SCAN_NOT_FOUND: 'This result expired. Results are kept for 30 minutes.',
   NETWORK_ERROR: 'Can’t reach the scanner. Check your connection and try again.',
-  CONTACT_INVALID: 'Some fields need another look.',
-  CONTACT_RATE_LIMITED: 'Too many messages from here. Please try again in an hour.',
-  CONTACT_DISABLED: 'The contact form is switched off right now. Please try again later.',
-  CONTACT_FAILED: 'Your message couldn’t be delivered. Please try again in a few minutes.',
 };
 
 export function messageFor(code: string): string {
