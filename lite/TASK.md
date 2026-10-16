@@ -381,3 +381,12 @@ Sunucuya ilk kurulumdan günlük işlere kadar sıralı adımlar:
 - `docker compose config` hatasız (Docker yoksa YAML'ı başka bir araçla doğrula ve raporla).
 - `git status` sadece izin verilen dosyaları gösteriyor.
 - Raporda: kaldırılan dosyalar, eklenen dosyalar, 4 motorun `CHROME_NO_SANDBOX`'ı okuduğunun kanıtı (dosya:satır), iptables kurallarının tam listesi, test çıktısı.
+
+### Revizyon 7 güncellemesi: iş bölümü (Claude, 2026-10-16)
+**B bölümünü (1–4) ve C7'yi Claude yaptı, sunucuda uyguluyor.** Bu dosyalara **dokunma**, sadece DEPLOY.md'de belgele:
+- `lite/docker-compose.yml`: `CHROME_NO_SANDBOX`, sabit ağ `lite_net` (`172.30.240.0/24`, backend `172.30.240.10`), `cpus`.
+- `lite/deploy/egress-firewall.sh` (sunucuda `/usr/local/sbin/wpa-lite-egress-firewall` olarak kurulu), `wpa-lite-egress.service`.
+- `lite/deploy/wpa-lite-update.service` + `.timer`.
+- `lite/deploy/50-wpa-lite-unattended.conf`.
+
+**Gemini'nin işi:** A (mail kodunun kaldırılması), C5 (Caddyfile + `cloudflare-ips.sh` snippet üretimi), C6 (UFW'yi Cloudflare'e kilitleyen kısım + `wpa-lite-cfips.timer`), D (bakım notları), E (`lite/deploy/DEPLOY.md`, yukarıdaki Claude dosyalarının kurulum ve geri alma adımları dahil). Bitti kriteri aynı, `docker compose config` maddesi hariç.
