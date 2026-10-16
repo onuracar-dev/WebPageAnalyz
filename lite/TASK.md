@@ -298,3 +298,86 @@ Testler yeşil (backend 55, web 36). Contact uç noktası canlıda doğrulandı 
 4. `docker stats` ile RAM/CPU (ölçülmüş değer), sonra `mem_limit` gözden geçirilir.
 5. Contact: gerçek anahtarla bir test mesajı.
 6. CSP: tarayıcı konsolunda CSP ihlali olmamalı (Fontshare, WebGL).
+
+---
+
+## Revizyon 7: Sandbox'sız Chromium için güvenlik önlemleri + mail kodunun kaldırılması (Claude, 2026-10-16)
+
+### Bağlam (VDS'te ilk gerçek çalıştırmanın sonuçları)
+- VDS: Ubuntu 24.04, 4 vCore, 6 GB. SSH sadece anahtarla, UFW (22/80/443), fail2ban, Docker 29 kurulu. Compose ayakta, nginx ve health sağlam.
+- İlk taramada artifact klasörü `EACCES` verdi. Claude düzeltti (`ARTIFACT_DIR=/tmp/wpa-artifacts`, commit'li).
+- **Chromium container'da açılmıyor.** SUID sandbox'ı `no-new-privileges` engelliyor, namespace sandbox'ını Ubuntu 24.04'ün AppArmor kısıtlaması ve Docker'ın seccomp profili engelliyor.
+- **Karar (Onur):** Chromium `--no-sandbox` ile çalışacak. İletişim formu mail göndermeyecek, frontend'de `mailto:` olacak (bunu Claude yapıyor). Böylece backend'de hiçbir gizli anahtar kalmıyor. Sandbox olmadığı için aşağıdaki önlemler zorunlu.
+
+### Kurallar
+- **Çalışma alanı:** `lite/backend/`, `lite/docker-compose.yml`, `lite/.env.example`, `lite/README.md`, yeni `lite/deploy/` klasörü. `lite/web/src/`'ye ve kopyalanan motor dosyalarına dokunma.
+- **Sunucuya bağlanamıyorsun.** Sunucu işleri için repoda **idempotent** (tekrar çalıştırılınca bozmayan) script ve ayar dosyaları hazırla. Claude denetleyip sunucuda uygulayacak ve test edecek.
+- **Shell script kuralları:** `#!/usr/bin/env bash` + `set -euo pipefail`, root gerektiriyorsa başta kontrol et. `bash -n` ile sözdizimi kontrolünden geçmeli, `shellcheck` varsa o da temiz olmalı.
+- Uydurma sayı yazma.
+
+### A. Mail gönderme kodunu kaldır
+`POST /api/contact` ve ona ait her şey gidiyor:
+- Uç nokta, `security/contact-limiter.js`.
+- `config.js`'teki `resendApiKey`/`contactTo`/`contactFrom`/`contactRateLimitPerHour`/`contactDailyLimit` alanları.
+- `/api/health`'teki `contact` alanı.
+- İlgili testler.
+- `environment.template`, `.env.example` ve README'deki Resend/contact bölümleri.
+
+Kalan testlerin hepsi yeşil kalmalı.
+
+### B. Zorunlu önlemler (sandbox olmadığı için)
+1. **Chromium `--no-sandbox`:**
+   - `docker-compose.yml` backend'e `CHROME_NO_SANDBOX: "true"` ekle. Yanına neden böyle olduğunu ve bu dosyadaki diğer önlemlere güvendiğimizi anlatan bir yorum yaz.
+   - Dört tarayıcı motoru da `chromeFlags(..., config)` üzerinden bunu okuyor mu, doğrula ve raporla (lighthouse, axe, wpa-page, advanced-browser). Motor dosyalarını değiştirme, sadece doğrula.
+2. **Çıkış engeli (en önemlisi):** Sandbox'sız bir Chromium'da kod çalıştıran bir sayfa, SSRF proxy'mizi atlayıp doğrudan bağlantı açabilir. Backend container'ı internete çıkabilmeli, ama özel ve iç adreslere hiç ulaşamamalı.
+   - Compose'a sabit bir ağ tanımla: `lite_net`, subnet `172.30.240.0/24`, backend için sabit IP (ör. `172.30.240.10`). `web` aynı ağda kalsın.
+   - `lite/deploy/egress-firewall.sh` iki şey yapsın:
+     - (a) `DOCKER-USER` zincirinde, backend IP'sinden şu hedeflere giden **yeni** bağlantıları DROP etsin: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, `100.64.0.0/10`, `0.0.0.0/8`, `224.0.0.0/4`. Önce `ESTABLISHED,RELATED` kabul edilsin ki web → backend istekleri ve cevaplar çalışsın.
+     - (b) `INPUT` zincirinde, backend IP'sinden host'un kendisine gelen yeni bağlantıları DROP etsin (host'un public IP'si dahil; container → host trafiği FORWARD'dan değil INPUT'tan geçer). Bu kural UFW kurallarından **önce** değerlendirilmeli.
+   - Script idempotent olsun: kendi kurallarını bir yorumla (`-m comment --comment wpa-lite-egress`) işaretlesin, eklemeden önce eskilerini silsin.
+   - `lite/deploy/wpa-lite-egress.service`: systemd unit'i. `After=docker.service`, `Requires=docker.service`, `Type=oneshot`, `RemainAfterExit=yes`. Böylece kurallar reboot ve Docker yeniden başlayınca geri gelsin.
+   - Docker'ın DNS'i (127.0.0.11) container'ın kendi ağ ad alanında çalıştığı için bu kurallardan etkilenmez. Bunu script'e yorum olarak yaz.
+3. **Haftalık yeniden build (Chromium güncel kalsın):**
+   - `lite/deploy/wpa-lite-update.service` + `wpa-lite-update.timer`: haftada bir (ör. Pazar 04:30, `Persistent=true`) `docker compose build --pull --no-cache` ve `docker compose up -d` çalıştırsın, ardından `docker image prune -f`. `--no-cache` önemli, yoksa `apt-get install chromium` katmanı önbellekten gelir ve güncellenmez.
+   - Kullanıcı `deploy`, çalışma dizini `/home/deploy/app/lite`. Çıktı journal'a gitsin.
+4. **CPU sınırı:** compose'da backend `cpus: "3"`, web `cpus: "0.5"`. Sunucu taramalar sırasında da SSH'a ve nginx'e yanıt verebilsin.
+
+### C. Diğer gerekli önlemler
+5. **TLS ve Cloudflare (Caddy):**
+   - `lite/deploy/Caddyfile`: `wpa.onuracar.dev` → `reverse_proxy 127.0.0.1:8081`.
+   - TLS için **Cloudflare Origin Certificate** kullanılacak (Cloudflare panelinden alınır, ACME ve API token gerekmez). Dosya yolları `/etc/caddy/certs/origin.pem` ve `origin.key`. Cloudflare SSL modu "Full (strict)".
+   - **Gerçek IP:** Caddy'de `servers { trusted_proxies static <Cloudflare IP aralıkları>; client_ip_headers CF-Connecting-IP }` ve `reverse_proxy` içinde `header_up X-Forwarded-For {client_ip}`. Böylece nginx'e tek ve doğru bir IP gider. nginx `real_ip` ayarına (özel ağlara güven) dokunma, olduğu gibi çalışmalı.
+   - Cloudflare IP aralıklarını Caddyfile'a elle yazma: `lite/deploy/cloudflare-ips.sh` bunları `https://www.cloudflare.com/ips-v4` ve `ips-v6`'dan çekip bir snippet dosyası üretsin, Caddyfile de onu `import` etsin.
+   - Caddy'nin resmi apt deposundan nasıl kurulacağını `DEPLOY.md`'ye yaz.
+6. **Origin'i Cloudflare'e kilitle:** `cloudflare-ips.sh` aynı listeyle UFW'de 80/443'ü sadece Cloudflare aralıklarına açsın, genel `80/tcp` ve `443/tcp` izinlerini kaldırsın. SSH (22) dokunulmadan kalsın. Script idempotent olsun ve listeyi haftalık güncelleyen bir timer'ı (`wpa-lite-cfips.timer`) olsun. **Uyarı:** Bu adım DNS kaydı Cloudflare'de "Proxied" (turuncu bulut) olmadan uygulanırsa site dışarıdan erişilemez. `DEPLOY.md`'de sırayı net yaz.
+7. **Otomatik güvenlik güncellemeleri:** `lite/deploy/50-wpa-lite-unattended.conf`: `Unattended-Upgrade::Automatic-Reboot "true"` ve `Automatic-Reboot-Time "04:00"`. Çekirdek güncellemeleri böylece uygulanır, container'lar `restart: unless-stopped` ile geri gelir.
+
+### D. Daha düşük öncelik (sadece belgele, kod yok)
+8. `DEPLOY.md`'de "Bakım" bölümü:
+   - Ayda bir `npm audit --omit=dev` (backend ve web).
+   - UptimeRobot vb. ile `https://wpa.onuracar.dev/api/health` izleme.
+   - İleride Turnstile eklenebileceği (frontend + backend, ayrı bir görev).
+9. Yellow Lab'e URL gönderildiği bilgisinin Terms'te durduğunu kontrol et (`lite/web/src/pages/Terms.tsx`, sadece oku, değiştirme). Eksikse raporda belirt.
+
+### E. `lite/deploy/DEPLOY.md`
+Sunucuya ilk kurulumdan günlük işlere kadar sıralı adımlar:
+- Sunucu sertleştirme (zaten yapıldı, kısa özet: deploy kullanıcısı, sshd `00-hardening.conf`, UFW, fail2ban, swap).
+- Docker kurulumu.
+- Kodun aktarılması.
+- `.env`.
+- `docker compose up -d --build`.
+- egress script + unit'in kurulumu.
+- Update timer.
+- Caddy + Origin cert.
+- Cloudflare DNS (proxied) ve **sonra** UFW kilidi.
+- Doğrulama komutları:
+  - Container içinden `curl -m 3 http://172.30.240.1` ve host IP'si zaman aşımına düşmeli, `curl -sI https://example.com` çalışmalı.
+  - Web üzerinden `/api/health` 200 dönmeli.
+- Geri alma: her adımın nasıl geri alınacağı (ör. `systemctl disable --now ...`, `iptables -D ...`).
+
+### Bitti kriteri
+- `cd lite/backend && npm test` yeşil (contact testleri kaldırılmış haliyle).
+- Tüm `lite/deploy/*.sh` dosyaları `bash -n`'den geçiyor.
+- `docker compose config` hatasız (Docker yoksa YAML'ı başka bir araçla doğrula ve raporla).
+- `git status` sadece izin verilen dosyaları gösteriyor.
+- Raporda: kaldırılan dosyalar, eklenen dosyalar, 4 motorun `CHROME_NO_SANDBOX`'ı okuduğunun kanıtı (dosya:satır), iptables kurallarının tam listesi, test çıktısı.
