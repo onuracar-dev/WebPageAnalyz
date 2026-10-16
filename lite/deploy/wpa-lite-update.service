@@ -1,0 +1,15 @@
+[Unit]
+Description=WPA Lite: rebuild images with current packages (keeps Chromium patched) and restart
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/home/deploy/app/lite
+# --no-cache so the apt layer that installs Chromium is rebuilt, not reused.
+ExecStart=/usr/bin/docker compose build --pull --no-cache
+ExecStart=/usr/bin/docker compose up -d
+ExecStart=/usr/bin/docker image prune -f
+TimeoutStartSec=30min

@@ -1,0 +1,16 @@
+[Unit]
+Description=WPA Lite: block the backend container from private networks and this host
+Documentation=file:///home/deploy/app/lite/deploy/egress-firewall.sh
+After=docker.service
+Requires=docker.service
+# Re-apply whenever Docker restarts (it recreates its chains).
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/wpa-lite-egress-firewall
+ExecStop=/usr/local/sbin/wpa-lite-egress-firewall --remove
+
+[Install]
+WantedBy=multi-user.target docker.service

@@ -1,0 +1,10 @@
+[Unit]
+Description=WPA Lite: weekly image rebuild
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

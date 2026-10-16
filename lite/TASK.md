@@ -390,3 +390,12 @@ Sunucuya ilk kurulumdan günlük işlere kadar sıralı adımlar:
 - `lite/deploy/50-wpa-lite-unattended.conf`.
 
 **Gemini'nin işi:** A (mail kodunun kaldırılması), C5 (Caddyfile + `cloudflare-ips.sh` snippet üretimi), C6 (UFW'yi Cloudflare'e kilitleyen kısım + `wpa-lite-cfips.timer`), D (bakım notları), E (`lite/deploy/DEPLOY.md`, yukarıdaki Claude dosyalarının kurulum ve geri alma adımları dahil). Bitti kriteri aynı, `docker compose config` maddesi hariç.
+
+### Sunucu sonuçları (Claude, 2026-10-16), DEPLOY.md'ye işlenecek
+- `CHROME_NO_SANDBOX=true` ile container içinde gerçek taramalar tamamlandı: example.com'da 7/7 motor, 26 sn; www.onuracar.dev'de 7/7 motor, 98 sn.
+- **Ölçülen tepe değerler (`docker stats`, 2 sn örnekleme):** example.com'da 543 MiB RAM ve %250 CPU, www.onuracar.dev'de 1.07 GiB RAM ve %357 CPU. Bu yüzden backend `mem_limit` 2500m'ye çıkarıldı.
+- **Çıkış engeli test edildi** (backend container'ından TCP bağlantı denemesi):
+  - Açık: example.com:443, 1.1.1.1:443.
+  - Engelli: Docker ağ geçidi 172.30.240.1:22, host public IP:22, 169.254.169.254:80, 10.0.0.1:80.
+  - **Bilinen istisna:** Aynı bridge ağındaki `web` container'ına (8080) erişim açık kalıyor, çünkü bridge içi trafik `DOCKER-USER`'dan geçmiyor. nginx backend'e yeni bir yetki vermediği için kabul edildi. DEPLOY.md'de bu şekilde belgele.
+- `wpa-lite-update.timer` aktif (Pazar 04:30 + en fazla 15 dk rastgele gecikme). `wpa-lite-egress.service` docker.service'e bağlı. Unattended reboot 04:00.

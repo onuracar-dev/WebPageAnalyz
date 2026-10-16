@@ -17,9 +17,20 @@ services:
       XDG_CACHE_HOME: /tmp/.cache
       # Scan artifacts live in /tmp: a tmpfs mounted elsewhere is root-owned and the app runs as node.
       ARTIFACT_DIR: /tmp/wpa-artifacts
+      # Chromium's own sandbox cannot start here: no-new-privileges blocks the setuid helper and Ubuntu 24.04's
+      # AppArmor userns restriction plus Docker's seccomp profile block the namespace sandbox. The container is the
+      # boundary instead: non-root, all capabilities dropped, read-only root, no secrets in the environment, CPU,
+      # memory and pid limits, and deploy/egress-firewall.sh stopping it from reaching private or host addresses.
+      CHROME_NO_SANDBOX: "true"
     env_file:
       - .env
-    mem_limit: 1500m
+    networks:
+      lite_net:
+        # Fixed so deploy/egress-firewall.sh can match it.
+        ipv4_address: 172.30.240.10
+    cpus: "3"
+    # Measured peak on a real portfolio site: ~1.07 GiB (2026-10-16). Leaves headroom on a 6 GB host.
+    mem_limit: 2500m
     pids_limit: 512
     read_only: true
     tmpfs:
@@ -43,6 +54,9 @@ services:
       - "127.0.0.1:${WEB_PORT:-8081}:8080"
     depends_on:
       - backend
+    networks:
+      - lite_net
+    cpus: "0.5"
     mem_limit: 256m
     pids_limit: 128
     read_only: true
@@ -59,3 +73,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  lite_net:
+    ipam:
+      config:
+        - subnet: 172.30.240.0/24
