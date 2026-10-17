@@ -1,194 +1,121 @@
 # WebPage Analyzer
 
-Production-oriented website audit platform with AI-assisted remediation.
+Paste a public URL, and seven audit engines look at it from different angles: performance, accessibility, SEO, front-end quality, layout and what a crawler sees. The findings come back as one map you can explore, each with the evidence behind it.
 
-<a href="https://usewpa.tech/">
-  <img src="./docs/assets/usewpa-homepage.png" alt="WebPage Analyzer live website">
-</a>
+**Try it: [wpa.onuracar.dev](https://wpa.onuracar.dev)** · no account, no cookies.
 
-[Live website](https://usewpa.tech/)
+![WPA Lite: the findings map after scanning example.com](docs/assets/wpa-lite-results.jpg)
 
-WebPage Analyzer combines Lighthouse, Axe, YellowLabTools, bounded discovery, and optional OpenRouter-backed remediation in one workflow. A user submits an authorized public target, the backend runs bounded audits through an SSRF-aware network boundary, and the React dashboard presents prioritized measured findings.
+---
 
-## What is included
+## What's in this repository
 
-- Lighthouse desktop/mobile audits for performance, SEO, accessibility, and best practices
-- Axe accessibility findings and YellowLab frontend-quality signals
-- Optional, provider-independent OpenRouter remediation suggestions and executive summaries
-- PostgreSQL-backed projects, scans, versioned report history and credit ledger
-- Executable per-engine capability/coverage status with honest partial reports
-- Durable page-level retries, lease reclaim and reconnect-safe bounded progress
-- Crawler route/referrer evidence, Visual UX viewport rectangles and versioned Source Audit results
-- TR/EN JSON and server-rendered PDF export
-- Separate customer and 2FA-protected administrator portals
-- A real Free entitlement state plus redeem/admin early access; the retained Paddle checkout, signed webhook, cancellation and buyer-portal adapter is activated only when `PAYMENTS_ENABLED=true`
-- Resend-backed verification, password-reset and transactional notifications through an isolated email service
-- Lazy-loaded report visualization to keep the initial frontend bundle smaller
-- Docker deployment with an Nginx same-origin API proxy
-- Automated syntax, lint, test, build, and dependency-audit checks
+| Folder | What it is | Status |
+| --- | --- | --- |
+| [`lite/`](lite) | **WPA Lite**: the account-free scanner above. Express backend, React frontend, Docker deploy. | Live at [wpa.onuracar.dev](https://wpa.onuracar.dev) |
+| `backend/`, `website/`, `frontend/`, `infra/` | The **full platform**: accounts, workspaces, PostgreSQL job queue, site crawling, passive security scans, AI remediation, billing adapters. | Code only, not deployed publicly ([details](docs/PLATFORM.md)) |
+| [`docs/`](docs) | Design notes, reliability reports and the full platform guide. | |
 
-## Security model
+Most of this README is about WPA Lite, because that is the part you can use.
 
-Analyzing arbitrary URLs is inherently high-risk. This implementation applies several layers:
+## How a scan works
 
-1. Only credential-free `http:` and `https:` URLs on configured ports are accepted.
-2. Local names and private, loopback, link-local, multicast, documentation, and reserved IPv4/IPv6 ranges are rejected.
-3. Every Chromium connection passes through a loopback-only proxy that resolves the destination again, rejects mixed public/private DNS answers, and connects to the vetted IP. Redirects and subresources therefore receive the same check.
-4. Analysis concurrency, queue length, duration, proxy connections, and transferred bytes are bounded.
-5. CORS uses an explicit origin list; request bodies are small and schema validated.
-6. General, analysis, and AI routes have separate rate limits.
-7. Browser mutations require a trusted origin, and workspace access comes from a Better Auth session rather than caller-supplied IDs.
-8. Administrator authority is stored server-side, requires TOTP 2FA, and is never inferred from the UI. Separate admin API keys are reserved for automation.
-9. Public-link modules can scan a credential-free public URL without ownership proof. Whole-site crawling, passive security, and journeys require the target's exact per-project DNS TXT challenge. Automated monitoring is not a launch capability.
-10. Raw analyzer and source files use randomized names and are deleted after parsing by default.
+1. **You paste a URL and confirm you may test it.** The backend checks that it is a public `http(s)` address on port 80 or 443, then follows redirects itself (`example.com` → `www.example.com`), validating every hop.
+2. **The scan joins a queue.** One scan runs at a time; the page shows your position.
+3. **Seven engines run** while the timeline updates live:
 
-The application-level proxy materially reduces SSRF risk, but production deployments must also enforce host/cloud outbound firewall policy. The API, analysis worker, AI service, email service, billing egress and database use separate Compose networks and secret sets. Block cloud metadata and all private/link-local ranges at the infrastructure layer; restrict provider egress as described in [`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md). The API image has no browser/OSV tools; hostile browser/source/PDF work belongs to the isolated worker described in [`docs/INFRA_RUNTIME_BOUNDARY.md`](docs/INFRA_RUNTIME_BOUNDARY.md). Do not set `CHROME_NO_SANDBOX=true`: the worker fails closed when the real sandbox is unavailable.
+   | Engine | Looks at |
+   | --- | --- |
+   | Google Lighthouse | Performance, accessibility, best practices and SEO, on desktop and mobile |
+   | axe | WCAG accessibility rules |
+   | Yellow Lab Tools | Front-end code quality and DOM patterns (third-party service, runs on their servers) |
+   | WPA Page | Rendered SEO, metadata, headers, layout and runtime errors |
+   | Performance+ | Core Web Vitals (LCP, CLS, long tasks) per viewport |
+   | Advanced GEO | Structured data, entity signals, `robots.txt` and `llms.txt` |
+   | Visual UX | Layout stability, element sizing across viewports and low-contrast text |
 
-## Data flow and privacy
+4. **Findings land on a map.** Group them by category, engine or severity; click one to see the markup captured from the page, or the raw evidence the engine reported. Nothing is generated or guessed.
+5. **Results are kept for 30 minutes** in memory, then deleted.
 
-- The target URL is submitted to YellowLabTools when that analyzer is enabled.
-- A minimized, redacted finding or aggregate score set is sent to OpenRouter only when a user explicitly requests an AI response. OpenRouter may route to the configured underlying model providers; full HTML, cookies, authorization headers, source archives and repository contents are not normal AI inputs.
-- Account, project, credit, scan and report records are stored in PostgreSQL and isolated by workspace.
-- Analyzer artifacts are temporary unless `KEEP_ANALYZER_ARTIFACTS=true` is explicitly configured.
-
-Do not submit URLs containing sensitive query parameters or one-time tokens: the complete target URL must be sent to the audit providers and is retained in the submitting browser's local history.
-
-Review the third-party terms and privacy requirements before operating a public service.
-
-## Architecture
-
-| Area | Implementation |
+| Scanning | Evidence for a finding |
 | --- | --- |
-| Frontend | Unified React 19 + Vite marketing site, auth screens, customer portal and admin console |
-| API | Express 5, Zod, Helmet, express-rate-limit |
-| Identity and billing | Better Auth with verified email and TOTP; Paddle Checkout/signed webhooks behind a provider-neutral billing contract |
-| Persistence and jobs | PostgreSQL plus pg-boss durable jobs |
-| Audit engines | Lighthouse, Axe, YellowLabTools |
-| Browser boundary | DNS/IP policy plus a per-analysis safe HTTP CONNECT proxy |
-| AI | Internal AI service → configurable OpenRouter primary/fallback models; optional legacy adapter for development only |
-| Email | Internal email service → Resend |
-| Deployment | Ubuntu 24.04, Docker Compose, host TLS reverse proxy, non-root/read-only service containers |
+| ![The live engine timeline](docs/assets/wpa-lite-scan.jpg) | ![A finding with the markup captured from the page](docs/assets/wpa-lite-evidence.jpg) |
 
-## Local development
+### What it deliberately doesn't do
 
-Requirements: Node.js 20.19+ (Node 24 is used in CI), npm, and Chrome/Chromium.
+The full platform can also crawl whole sites, run passive security scans (OWASP ZAP) and replay user journeys. Those touch a site much harder, so they require proving you own the domain with a DNS record. WPA Lite has no accounts, so it leaves them out and only runs engines that are fine against any public page.
+
+## Security
+
+Anyone can make this server open any URL in a browser. That shapes most of the design:
+
+- **No path to private networks.** Every browser connection goes through a proxy that resolves DNS itself and connects to the checked address, so DNS rebinding and redirects to `127.0.0.1`, `10.x` or cloud metadata are refused. The redirect resolver pins its connections the same way.
+- **The container is the boundary.** Chromium runs without its own sandbox (it can't start one inside this hardened container), so the container is locked down instead: non-root, all capabilities dropped, read-only filesystem, CPU and memory limits, and firewall rules that block it from opening new connections to private ranges or to the host (the only thing it can still reach internally is its own nginx front end, see [DEPLOY.md](lite/deploy/DEPLOY.md)).
+- **Nothing worth stealing.** The backend holds no API keys or credentials. The contact page opens your own mail app instead of sending mail from the server.
+- **Abuse limits.** Per-IP rate limit, a 10-minute cooldown per scanned host, a daily cap and a bounded queue.
+- **Behind Cloudflare only.** The server accepts web traffic only from Cloudflare's ranges, over an origin certificate checked in Full (strict) mode.
+- **No tracking.** No analytics, no cookies. Logs keep a salted hash of the IP address, never the address itself.
+
+Engine images are rebuilt weekly so Chromium stays patched; the host applies security updates on its own.
+
+## Measured on the live server
+
+One VDS: 4 vCPU (Intel Xeon Gold 6240R), 6 GB RAM, Ubuntu 24.04, Docker. Peak values from `docker stats`, sampled every 2 s, October 2026.
+
+| Target | Engines completed | Scan time | Peak memory | Peak CPU |
+| --- | --- | --- | --- | --- |
+| example.com | 7 / 7 | 26–27 s | 543 MiB | 250 % |
+| www.onuracar.dev | 7 / 7 | 98 s | 1.07 GiB | 357 % |
+
+Scan time depends mostly on the target: heavier pages take longer for every browser engine.
+
+## Run it locally
+
+You need Node.js 22.19+ and Chrome or Chromium.
 
 ```bash
-cp backend/environment.template backend/.env
-cd backend
+cd lite/backend
 npm ci
-npm start
+npm start            # API on http://localhost:8080
 ```
 
-In another terminal:
-
 ```bash
-cd website
+cd lite/web
 npm ci
-npm run dev
+npm run dev          # http://localhost:5173, proxies /api to the backend
 ```
 
-Vite proxies `/api` to `http://localhost:5000`, so `VITE_API_BASE_URL` can stay empty. Open `http://localhost:5173`.
+Local defaults are strict (3 scans an hour per IP, 10-minute host cooldown). For development you can relax them in `lite/backend/.env`, see [`environment.template`](lite/backend/environment.template).
 
-Local in-process development can use injected provider doubles. The production topology runs dedicated `ai-service` and `email-service` containers; configure them through the root `.env` contract and never put provider secrets in a `VITE_*` variable because Vite embeds those values in public browser assets.
-
-## Configuration
-
-All options and conservative defaults are documented in [`backend/environment.template`](./backend/environment.template). The most important settings are:
-
-| Variable | Purpose |
-| --- | --- |
-| `CORS_ORIGINS` | Comma-separated exact frontend origins |
-| `API_KEYS` | Optional comma-separated keys for analyze/AI endpoints |
-| `ADMIN_API_KEYS` | Separate non-browser automation keys for protected admin operations |
-| `BOOTSTRAP_ADMIN_EMAILS` | Exact existing account emails allowed to create the initial super-admin record |
-| `BETTER_AUTH_SECRET` | At least 32 random characters used only by the backend |
-| `PAYMENTS_ENABLED` / `BILLING_PROVIDER` / `PADDLE_*` | `false` runs Free + redeem-only without Paddle secrets; paid mode requires the complete Paddle API/webhook and Signal/Studio mapping contract |
-| `AI_SERVICE_TOKEN` / `OPENROUTER_*` | Internal AI authentication plus server-side OpenRouter key, attribution and deployment-time model chain |
-| `EMAIL_SERVICE_TOKEN` / `RESEND_API_KEY` / `EMAIL_FROM` | Internal email authentication and verified Resend sender |
-| `MAX_CONCURRENT_ANALYSES` / `MAX_QUEUED_ANALYSES` | Bounded local work queue |
-| `*_TIMEOUT_MS` | Overall and per-provider deadlines |
-| `ALLOWED_TARGET_PORTS` | Public destination ports; keep `80,443` in production |
-| `KEEP_ANALYZER_ARTIFACTS` | Retain raw audit JSON; defaults to `false` |
-| `TRUST_PROXY` | Enable only behind a trusted reverse proxy |
-
-Production rate-limit buckets and entitlement/usage ledgers are PostgreSQL-backed and namespace each endpoint budget. The in-memory implementation is development-only.
-
-`API_KEYS` is intended for external API automation. The browser UI never embeds shared API or admin keys; it uses secure Better Auth session cookies and server-side workspace limits.
-
-The unified site routes are `/` (marketing), `/login`, `/register`, `/app` (customer workspace) and `/admin`. To bootstrap the first administrator, register the exact email listed in `BOOTSTRAP_ADMIN_EMAILS`, enable TOTP from the protected admin gate, then sign in again. Remove the bootstrap email from deployment configuration after the admin row exists.
-
-## API
-
-Analyze a URL:
+## Tests
 
 ```bash
-curl -X POST http://localhost:5000/api/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://example.com"}'
+cd lite/backend && npm test              # 44 tests: API, SSRF guards, redirects, queue, limits
+cd lite/web && npm test                  # 39 tests: polling state machine, map layout, evidence, mailto
+cd lite/web && npx playwright test       # 8 end-to-end tests against a mocked API
 ```
 
-If `API_KEYS` is set, add `-H "X-API-Key: your-key"`. Administrative cleanup uses a key from `ADMIN_API_KEYS`:
+None of them start a real browser scan or touch the network.
 
-```bash
-curl -X DELETE http://localhost:5000/api/logs \
-  -H "X-API-Key: your-admin-key"
-```
+## Deploy
 
-Health endpoints are `GET /healthz` and `GET /readyz`. Error responses contain a stable `code` and `requestId` without stack traces or upstream error details.
+[`lite/deploy/DEPLOY.md`](lite/deploy/DEPLOY.md) walks through the whole server setup in order: Docker Compose, the egress firewall, the weekly rebuild timer, Caddy with a Cloudflare origin certificate, locking ports 80/443 to Cloudflare, how to verify each step and how to roll it back.
 
-## Docker deployment
+## Built with
 
-The checked-in root `production.environment.template` is the production-safe baseline: role-scoped
-PostgreSQL URLs require TLS. Copy it to `.env`, set separate
-administrator/runtime/migrator/worker/maintenance/queue database passwords and
-service/provider secrets (the resulting file is gitignored), provision the
-private PostgreSQL CA/certificate files, and follow the exact commands in
-[`docs/PRODUCTION_DEPLOYMENT.md`](docs/PRODUCTION_DEPLOYMENT.md). Production
-uses both `docker-compose.yml` and `docker-compose.production.yml`; do not start
-the base file alone and call it a production deployment.
+- **Backend:** Node.js, Express 5, Lighthouse, axe-core, Puppeteer, Playwright
+- **Frontend:** React 19, Vite, TypeScript, Motion; the findings map is a hand-written Canvas 2D component
+- **Infrastructure:** Docker Compose, nginx, Caddy, Cloudflare, Ubuntu 24.04
 
-For a disposable local stack using the bundled plaintext Postgres, make the
-boundary explicit by using the local overlay and a separate env file. Do not
-use this command for production:
+Third-party UI pieces (the Topography background from React Bits, components from Arc UI, an accordion adapted from useLayouts, the Satoshi typeface) are listed with their licenses in [`lite/web/CREDITS.md`](lite/web/CREDITS.md).
 
-```bash
-copy production.environment.template .env.local
-docker compose --env-file .env.local -f docker-compose.yml -f docker-compose.local.yml up --build -d
-```
+## Limits
 
-The `frontend/` directory is retained as a development/compatibility surface;
-the canonical customer UI is `website/`. The release workflow publishes the
-canonical `website` image only and does not publish the legacy frontend image.
+- An automated scan is a starting point, not an audit or a compliance certificate.
+- Your URL is also sent to Yellow Lab Tools, which loads the page from its own servers.
+- One scan runs at a time, so busy moments mean a short queue.
+- Results live in memory; a server restart clears them.
 
-The dashboard is served at `http://localhost:8080`; Nginx proxies `/api` to the private backend service. The one-shot `db-bootstrap`, `db-migrate`, and `db-grants` services create roles, apply checksummed migrations/pg-boss schema, and grant least-privilege access before API/worker startup. Set `PUBLIC_ORIGIN` to the exact HTTPS origin in production. Terminate TLS at a trusted load balancer or ingress and keep the backend port private.
+## License
 
-## Verification
-
-```bash
-cd backend
-npm ci
-npm run check
-npm run db:check
-npm run lint
-npm test
-npm audit --audit-level=moderate
-
-cd ../website
-npm ci
-npm run build
-npm audit --audit-level=moderate
-```
-
-Most backend tests inject analyzer, DNS, and AI doubles and do not contact external services. Guarded suites use `TEST_DATABASE_URL` for PostgreSQL/pg-boss and `RUN_REAL_CHROME=1` for an installed-browser fixture; a skipped guarded suite is UNPROVEN, not PASS.
-
-## Operational limitations
-
-- Lighthouse and Chromium are resource-intensive. Start with one backend instance and low concurrency, then measure memory/CPU before increasing limits.
-- Without PostgreSQL the development fallback queue and store are intentionally ephemeral; production requires PostgreSQL.
-- Email verification/reset code is wired to Resend, but the real sender domain, SPF/DKIM and live delivery must be verified before launch.
-- Public legal documents fail closed until the operator identity/address/effective date are supplied. Their jurisdiction-specific wording still requires operator/legal review before accepting live revenue.
-- Paddle is intentionally optional while `PAYMENTS_ENABLED=false`; enabling paid billing still requires real provider configuration and acceptance. OpenRouter, DNS/TLS, an external uptime monitor, and restore drills require real external configuration; repository tests do not prove those live systems.
-- A successful automated scan is not a security, accessibility, legal, or compliance certification.
-
-Security reports can be sent to the private contact channel listed on the live website.
+[MIT](LICENSE) © Onur Acar. Found a problem or saw unexpected traffic from the scanner? Use the [contact page](https://wpa.onuracar.dev/contact).
