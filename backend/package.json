@@ -29,7 +29,7 @@
     "@axe-core/puppeteer": "^4.12.1",
     "@better-auth/passkey": "1.6.26",
     "@google/generative-ai": "^0.24.1",
-    "better-auth": "1.6.26",
+    "better-auth": "1.7.15",
     "chrome-launcher": "^1.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
